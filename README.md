@@ -46,7 +46,7 @@
 | 🖥️ **PC graphics options** | Up to 3x internal resolution, anisotropic filtering, FXAA, the game's own MSAA on or off, VSync, windowed or fullscreen (F11). |
 | ⚙️ **PC Settings, in game** | A *PC Settings* entry in the main menu, plus a launcher (`Fable II.exe`) with the same options before you play. |
 | 🚀 **Tuned for speed** | GPU submission and readback work reshaped for PC; a fast AVX2 build and a compatible build for older CPUs, picked automatically. |
-| 🔄 **Updates built in** | The installer fetches only what changed in this repository and rebuilds what that needs. |
+| 🔄 **One-click updates** | The launcher checks GitHub when it opens and shows an **Update** button when there's a new version. It downloads only what changed and rebuilds what that needs. |
 
 ## 🗡️ Getting started
 
@@ -69,7 +69,12 @@
 3. Wait for the build. The first one recompiles the whole game and takes a while.
 4. Press **Play**, or use the **Fable II** shortcut on your desktop.
 
-Running the setup again on the same folder repairs or updates the install and only redoes what changed.
+### Updating
+
+When a new version is on GitHub, the launcher (`Fable II.exe`) shows an **Update** button. Click it,
+let the console window finish, then start the game again. You can also use **Update Fable II** in
+the Start menu, or run the setup again on the same folder. Either way only what changed is
+downloaded, and your settings and saves are kept.
 
 <details>
 <summary><b>Installing from the command line</b></summary>

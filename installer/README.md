@@ -117,6 +117,11 @@ a folder of your own, that folder is the one that gets changed.
 
 ### Updating an installation
 
+The launcher checks for updates every time it opens (in the background, through
+`fable2-installer update --check`; skipped offline, in a development tree, or with
+`FABLE2_NO_UPDATE_CHECK=1`). When GitHub has a newer version it shows an **Update** button, which
+saves the settings, closes the launcher and runs `Update Fable II.cmd` in a console window.
+
 ```bat
 installer\fable2-installer update            :: download what changed on GitHub, rebuild what that needs
 installer\fable2-installer update --check    :: only report whether an update is available

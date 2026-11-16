@@ -4,6 +4,12 @@
 //!
 //! `Fable II.exe --play` skips the window and starts the game straight away.
 //!
+//! Updates: when the window opens, an installed copy asks its own installer in the background
+//! whether GitHub has a newer version (`fable2-installer update --check`, the same check the setup
+//! program does). If it has, an **Update** button appears; it runs `Update Fable II.cmd` (download
+//! what changed, rebuild what that needs) in a console window and closes the launcher. Offline,
+//! a development tree, or `FABLE2_NO_UPDATE_CHECK=1`: no check, no button.
+//!
 //! Dev builds: `fable2-launch.exe --settings-only --cwd <dir> --exe <game exe>` shows the same
 //! window, saves the `native/fable2.toml` above `<dir>` and exits 0 on Play (the calling script then
 //! starts the game itself), or exits 1 when the window is closed.
@@ -207,6 +213,50 @@ impl Launch {
         c.spawn()
             .map_err(|e| format!("Could not start {}: {e}", self.exe.display()))?;
         Ok(())
+    }
+}
+
+// ---- updates (see the top of the file) ------------------------------------------------------
+
+/// Result of the background update check: (files, bytes) when GitHub has something newer.
+#[cfg_attr(not(windows), allow(dead_code))]
+static UPDATE: std::sync::Mutex<Option<(u64, u64)>> = std::sync::Mutex::new(None);
+
+impl Launch {
+    /// Only a real installation updates itself: it has the installer exe next to it and the
+    /// install state. A development tree (the maintainer's checkout) is never touched.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn can_update(&self) -> bool {
+        let ext = if cfg!(windows) { ".exe" } else { "" };
+        !self.settings_only
+            && std::env::var("FABLE2_NO_UPDATE_CHECK").map(|v| v.trim() != "1").unwrap_or(true)
+            && self.root.join("installer").join(format!("fable2-installer{ext}")).is_file()
+            && self.root.join(".installer").join("state").is_file()
+    }
+
+    /// Runs `Update Fable II.cmd` (or the installer's `update` directly) in its own console window.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn start_update(&self) -> Result<(), String> {
+        let script = self.root.join("Update Fable II.cmd");
+        let mut c = if script.is_file() {
+            let mut c = Command::new("cmd.exe");
+            c.arg("/c").arg(&script);
+            c
+        } else {
+            let ext = if cfg!(windows) { ".exe" } else { "" };
+            let mut c = Command::new(self.root.join("installer").join(format!("fable2-installer{ext}")));
+            c.arg("update");
+            c
+        };
+        c.current_dir(&self.root);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE: the player sees the progress
+        }
+        c.spawn()
+            .map(|_| ())
+            .map_err(|e| format!("Could not start the update: {e}"))
     }
 }
 
@@ -588,6 +638,8 @@ mod win {
     const ID_CANCEL: usize = 2; // IDCANCEL: Esc
     const ID_RESTORE: usize = 10;
     const ID_SAVE: usize = 11;
+    const ID_UPDATE: usize = 12;
+    const WM_UPDATE_FOUND: u32 = 0x8000 + 1; // WM_APP + 1: the background check found an update
     const ID_COMBO0: usize = 100;
 
     // Layout at 96 dpi (100 %); everything is scaled by the window's dpi.
@@ -682,6 +734,7 @@ mod win {
         btn_restore: HWND,
         btn_save: HWND,
         btn_play: HWND,
+        btn_update: HWND,
         link: RECT,
         link_w: i32,
         link_hot: bool,
@@ -696,6 +749,8 @@ mod win {
         Nothing,
         Fail(String),
         Close,
+        /// Ask whether to update (outside the state borrow: the question box is modal).
+        AskUpdate,
     }
 
     impl Win {
@@ -755,7 +810,7 @@ mod win {
                 self.combos.push(Combo { hwnd: h, row: r });
             }
             // keep tab order: combos first, then the buttons
-            for b in [self.btn_restore, self.btn_save, self.btn_play] {
+            for b in [self.btn_restore, self.btn_update, self.btn_save, self.btn_play] {
                 // SAFETY: our child windows.
                 unsafe { SetWindowPos(b, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) };
             }
@@ -828,6 +883,7 @@ mod win {
                     SetWindowPos(h, std::ptr::null_mut(), x, y, wd, bh, SWP_NOZORDER | SWP_NOACTIVATE);
                 };
                 place(self.btn_restore, s(M), s(128));
+                place(self.btn_update, s(M) + s(128) + s(6), s(90));
                 place(self.btn_play, cw - s(M) - s(80), s(80));
                 place(self.btn_save, cw - s(M) - s(80) - s(6) - s(80), s(80));
             }
@@ -869,7 +925,7 @@ mod win {
                 .combos
                 .iter()
                 .map(|c| c.hwnd)
-                .chain([self.btn_restore, self.btn_save, self.btn_play])
+                .chain([self.btn_restore, self.btn_update, self.btn_save, self.btn_play])
             {
                 // SAFETY: our child windows; redraw with the new font.
                 unsafe { SendMessageW(h, WM_SETFONT, self.fonts.ui as WPARAM, 1) };
@@ -1000,6 +1056,7 @@ mod win {
                     Err(e) => After::Fail(e),
                 },
                 ID_CANCEL => After::Close,
+                ID_UPDATE if code == BN_CLICKED_ => After::AskUpdate,
                 ID_RESTORE if code == BN_CLICKED_ => {
                     self.state.restore_defaults();
                     self.refresh_values();
@@ -1027,6 +1084,13 @@ mod win {
                 _ => After::Nothing,
             }
         }
+    }
+
+    /// Yes/No question box; true on Yes.
+    fn ask(hwnd: HWND, text: &str) -> bool {
+        let (t, c) = (w(text), w("Fable II Reborn"));
+        // SAFETY: NUL-terminated strings; MB_YESNO | MB_ICONQUESTION.
+        unsafe { MessageBoxW(hwnd, t.as_ptr(), c.as_ptr(), MB_YESNO | MB_ICONQUESTION) == IDYES }
     }
 
     fn lo(v: usize) -> u32 {
@@ -1105,6 +1169,12 @@ mod win {
                     }
                     Some((0, After::Nothing))
                 }
+                WM_UPDATE_FOUND => {
+                    ShowWindow(app.btn_update, SW_SHOW);
+                    let t = w("Fable II Reborn - Options  (update available)");
+                    SetWindowTextW(hwnd, t.as_ptr());
+                    Some((0, After::Nothing))
+                }
                 WM_DPICHANGED_ => {
                     app.dpi = hi(wp).max(96);
                     app.set_fonts();
@@ -1123,6 +1193,34 @@ mod win {
             }
             Some((ret, After::Close)) => {
                 DestroyWindow(hwnd);
+                ret
+            }
+            Some((ret, After::AskUpdate)) => {
+                let (files, bytes) = UPDATE.lock().ok().and_then(|g| *g).unwrap_or((0, 0));
+                let q = format!(
+                    "A new version of Fable II Reborn is on GitHub ({files} changed file(s), {}).\n\n\
+                     Update now? The launcher closes and the update runs in a console window: it downloads \
+                     only what changed and rebuilds what that needs (a few minutes, longer if the game code \
+                     has to be regenerated). Start Fable II again when it says it is done.",
+                    fable2_installer::util::human_bytes(bytes)
+                );
+                if ask(hwnd, &q) {
+                    // Save changed settings first, then hand over to the updater.
+                    let r = APP.with(|a| {
+                        let mut g = a.borrow_mut();
+                        let app = g.as_mut().ok_or_else(|| "the window is gone".to_string())?;
+                        if app.state.dirty() {
+                            app.state.save()?;
+                        }
+                        app.state.launch.start_update()
+                    });
+                    match r {
+                        Ok(()) => {
+                            DestroyWindow(hwnd);
+                        }
+                        Err(e) => message(&e),
+                    }
+                }
                 ret
             }
             None => DefWindowProcW(hwnd, msg, wp, lp),
@@ -1244,6 +1342,7 @@ mod win {
                 btn_restore: std::ptr::null_mut(),
                 btn_save: std::ptr::null_mut(),
                 btn_play: std::ptr::null_mut(),
+                btn_update: std::ptr::null_mut(),
                 link: RECT { left: 0, top: 0, right: 0, bottom: 0 },
                 link_w: 0,
                 link_hot: false,
@@ -1252,6 +1351,23 @@ mod win {
             app.btn_restore = app.child("BUTTON", "Restore to Defaults", BS_PUSHBUTTON as u32, ID_RESTORE);
             app.btn_save = app.child("BUTTON", "Save", BS_PUSHBUTTON as u32, ID_SAVE);
             app.btn_play = app.child("BUTTON", "Play", BS_DEFPUSHBUTTON as u32, ID_PLAY);
+            app.btn_update = app.child("BUTTON", "Update", BS_PUSHBUTTON as u32, ID_UPDATE);
+            ShowWindow(app.btn_update, SW_HIDE);
+            if app.state.launch.can_update() {
+                let root = app.state.launch.root.clone();
+                let target = hwnd as isize;
+                std::thread::spawn(move || {
+                    if let Ok(u) = fable2_installer::setup::check_update(&root) {
+                        if u.available {
+                            if let Ok(mut g) = UPDATE.lock() {
+                                *g = Some((u.files, u.bytes));
+                            }
+                            // SAFETY: posting to a window handle is safe even if it is gone by now.
+                            unsafe { PostMessageW(target as HWND, WM_UPDATE_FOUND, 0, 0) };
+                        }
+                    }
+                });
+            }
             app.build_combos();
             app.layout(None);
             app.refresh_save();
@@ -1297,7 +1413,7 @@ mod win {
     }
 }
 
-/// The app icon (the port's sword-and-ring mark), `n` x `n` RGBA.
+/// The app icon (the "II Reborn" wolf emblem), `n` x `n` RGBA.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn icon_rgba(n: usize) -> Vec<u8> {
     fable2_installer::brand::icon_rgba(n)
