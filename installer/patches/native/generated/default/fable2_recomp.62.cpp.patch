@@ -1,0 +1,79 @@
+--- a/native/generated/default/fable2_recomp.62.cpp
++++ b/native/generated/default/fable2_recomp.62.cpp
+@@ -1092,6 +1092,23 @@
+ 
+ DEFINE_REX_FUNC(sub_82227160) {
+ 	REX_FUNC_PROLOGUE();
++	// DIAGNOSTIC (2026-09-12): sub_82227160 -- identified this round as the
++	// caller of sub_822272C0 (via sub_822272C0's own return_addr(lr) diagnostic
++	// + codegen.partition.json, fable2_036.log) -- itself has no static caller
++	// anywhere in the recompiled tree (registered only via
++	// registrar->SetFunction(0x82227160, sub_82227160) in fable2_register.cpp,
++	// same no-static-caller pattern as sub_8226EA00/sub_822272C0). Logging
++	// ctx.lr here (captured before it's clobbered by the nested
++	// __savegprlr_27/bl calls below) to find ITS caller on the next capture --
++	// expected to be the actual per-frame UI panel Update/Draw entry point.
++	{
++		static int s_entry_count = 0;
++		if (s_entry_count < 60) {
++			++s_entry_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82227160 (legend item position/style/update loop) invocation #{}: r3(self)=0x{:08X} r4(item)=0x{:08X} return_addr(lr)=0x{:08X}",
++			            s_entry_count, ctx.r3.u32, ctx.r4.u32, static_cast<uint32_t>(ctx.lr));
++		}
++	}
+ 	PPCRegister temp{};
+ 	uint32_t ea{};
+ 	// mflr r12
+@@ -1123,7 +1140,22 @@
+ 	ctx.r9.u64 = REX_LOAD_U32(ctx.r11.u32 + 20);
+ 	// mtctr r9
+ 	ctx.ctr.u64 = ctx.r9.u64;
+-	// bctrl 
++	// DIAGNOSTIC (2026-09-12): sub_82227160 is the just-identified caller of
++	// sub_822272C0 (found via its return_addr(lr) diagnostic + codegen.partition.json,
++	// fable2_036.log). Its "self" object (r31) is called through 3 of its own
++	// vtable slots per item -- slot+28 is confirmed to be sub_822272C0
++	// ("update icon legend"); slots +20 and +24 (this call and the next) run
++	// BEFORE it and are the strongest remaining candidates for the actual
++	// position/layout/draw step. Logging their resolved targets to find out.
++	{
++		static int s_slot20_count = 0;
++		if (s_slot20_count < 40) {
++			++s_slot20_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82227160 indirect-call (self-vtable+20) #{}: self(r31)=0x{:08X} vtable_ptr(r11)=0x{:08X} call_target=0x{:08X} item(r30)=0x{:08X} item_field0=0x{:08X}",
++			            s_slot20_count, ctx.r31.u32, ctx.r11.u32, ctx.r9.u32, ctx.r30.u32, ctx.r4.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82227198;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r8,0(r31)
+@@ -1146,7 +1178,18 @@
+ 	ctx.r5.u64 = REX_LOAD_U32(ctx.r8.u32 + 24);
+ 	// mtctr r5
+ 	ctx.ctr.u64 = ctx.r5.u64;
+-	// bctrl 
++	// DIAGNOSTIC (2026-09-12): see comment above -- this is self-vtable+24,
++	// the second of the three per-item calls, called with a float (f1, from
++	// item+228) and two flag bits (r6/r7, from item+251) alongside item_field0.
++	{
++		static int s_slot24_count = 0;
++		if (s_slot24_count < 40) {
++			++s_slot24_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82227160 indirect-call (self-vtable+24) #{}: self(r31)=0x{:08X} vtable_ptr(r8)=0x{:08X} call_target=0x{:08X} item_field0=0x{:08X} item_float228={} flagA={} flagB={}",
++			            s_slot24_count, ctx.r31.u32, ctx.r8.u32, ctx.r5.u32, ctx.r4.u32, ctx.f1.f64, ctx.r7.u32, ctx.r6.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x822271C0;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r11,0(r31)
+@@ -1161,7 +1204,7 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 28);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	// bctrl
+ 	ctx.lr = 0x822271DC;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,236(r30)

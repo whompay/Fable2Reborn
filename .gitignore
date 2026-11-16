@@ -1,0 +1,24 @@
+# Never commit the game: disc images, extracted files and anything generated from them.
+/extracted/
+*.iso
+*.xex
+default.pe
+/native/generated/
+
+# Build output, local settings, saves and caches
+/installer/target/
+/native/out/
+/native/fable2.toml
+/native/user-data/
+/native/cache/
+/.installer/
+*.log
+*.pdb
+*.ilk
+*.profraw
+*.profdata
+
+# Backups and scratch
+*.bak
+*.bak_*
+__pycache__/

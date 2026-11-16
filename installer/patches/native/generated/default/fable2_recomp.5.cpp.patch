@@ -1,0 +1,237 @@
+--- a/native/generated/default/fable2_recomp.5.cpp
++++ b/native/generated/default/fable2_recomp.5.cpp
+@@ -873,6 +873,30 @@
+ 
+ DEFINE_REX_FUNC(sub_82226F00) {
+ 	REX_FUNC_PROLOGUE();
++	// DIAGNOSTIC (2026-09-12): sub_82226F00 -- identified this round as the
++	// caller of sub_82227160 (via its return_addr(lr) diagnostic +
++	// codegen.partition.json + static read, fable2_037.log: the vtable+124
++	// call at 0x822270C4 matches exactly). This function appears to be the
++	// actual TOP-LEVEL per-frame panel draw driver: it walks a reverse array
++	// of 204-byte "category" records (count at panel_data+1632) and, per
++	// category, calls its OWN vtable (self=r31, a runtime/heap pointer whose
++	// concrete vtable this static build cannot resolve) at ~12 different
++	// offsets bracketing the already-traced item-update loop (vtable+124 =
++	// sub_82227160). It has no static caller either (registered only via
++	// SetFunction, same pattern as every other hop in this graph) -- logging
++	// ctx.lr here to find ITS caller, and logging the resolved call_target at
++	// every AS-YET-UNIDENTIFIED self-vtable slot to find the real Begin/Draw/
++	// Present calls (candidates: +128 first call, +32 has real content+float
++	// args ["DrawCategoryHeader"-shaped], +120 right after both item loops,
++	// +96 the very last call in the function ["EndDraw/Present"-shaped]).
++	{
++		static int s_entry_count = 0;
++		if (s_entry_count < 40) {
++			++s_entry_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 (panel draw driver) invocation #{}: r3(self)=0x{:08X} r4(panel_data)=0x{:08X} return_addr(lr)=0x{:08X}",
++			            s_entry_count, ctx.r3.u32, ctx.r4.u32, static_cast<uint32_t>(ctx.lr));
++		}
++	}
+ 	PPCRegister temp{};
+ 	uint32_t ea{};
+ 	// mflr r12
+@@ -894,7 +918,15 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 128);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	{
++		static int s_v128_count = 0;
++		if (s_v128_count < 40) {
++			++s_v128_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+128, first call) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v128_count, ctx.r31.u32, ctx.r11.u32, ctx.r10.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82226F24;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,0(r31)
+@@ -905,7 +937,15 @@
+ 	ctx.r8.u64 = REX_LOAD_U32(ctx.r9.u32 + 92);
+ 	// mtctr r8
+ 	ctx.ctr.u64 = ctx.r8.u64;
+-	// bctrl 
++	{
++		static int s_v92_count = 0;
++		if (s_v92_count < 40) {
++			++s_v92_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+92) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v92_count, ctx.r31.u32, ctx.r9.u32, ctx.r8.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82226F38;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r7,1632(r30)
+@@ -939,7 +979,15 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 100);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	{
++		static int s_v100_count = 0;
++		if (s_v100_count < 40) {
++			++s_v100_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+100, per-category begin) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v100_count, ctx.r31.u32, ctx.r11.u32, ctx.r10.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82226F74;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,0(r31)
+@@ -956,7 +1004,15 @@
+ 	ctx.r8.u64 = REX_LOAD_U32(ctx.r9.u32 + 32);
+ 	// mtctr r8
+ 	ctx.ctr.u64 = ctx.r8.u64;
+-	// bctrl 
++	{
++		static int s_v32_count = 0;
++		if (s_v32_count < 40) {
++			++s_v32_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+32, category header candidate) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X} category_field0=0x{:08X} category_float4={}",
++			            s_v32_count, ctx.r31.u32, ctx.r9.u32, ctx.r8.u32, ctx.r4.u32, ctx.f1.f64);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82226F90;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r7,0(r31)
+@@ -967,7 +1023,15 @@
+ 	ctx.r6.u64 = REX_LOAD_U32(ctx.r7.u32 + 36);
+ 	// mtctr r6
+ 	ctx.ctr.u64 = ctx.r6.u64;
+-	// bctrl 
++	{
++		static int s_v36_count = 0;
++		if (s_v36_count < 40) {
++			++s_v36_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+36) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v36_count, ctx.r31.u32, ctx.r7.u32, ctx.r6.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82226FA4;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r5,8(r28)
+@@ -997,7 +1061,15 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 40);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	{
++		static int s_v40_count = 0;
++		if (s_v40_count < 40) {
++			++s_v40_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+40, add-row candidate) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X} row_item=0x{:08X} row_index={}",
++			            s_v40_count, ctx.r31.u32, ctx.r11.u32, ctx.r10.u32, ctx.r4.u32, ctx.r5.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82226FDC;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,8(r28)
+@@ -1025,7 +1097,15 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 108);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	{
++		static int s_v108_count = 0;
++		if (s_v108_count < 40) {
++			++s_v108_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+108, end-rows candidate) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v108_count, ctx.r31.u32, ctx.r11.u32, ctx.r10.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82227010;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,100(r27)
+@@ -1081,7 +1161,15 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 112);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	{
++		static int s_v112_count = 0;
++		if (s_v112_count < 40) {
++			++s_v112_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+112) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v112_count, ctx.r31.u32, ctx.r11.u32, ctx.r10.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82227078;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,0(r31)
+@@ -1092,7 +1180,15 @@
+ 	ctx.r8.u64 = REX_LOAD_U32(ctx.r9.u32 + 116);
+ 	// mtctr r8
+ 	ctx.ctr.u64 = ctx.r8.u64;
+-	// bctrl 
++	{
++		static int s_v116_count = 0;
++		if (s_v116_count < 40) {
++			++s_v116_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+116) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v116_count, ctx.r31.u32, ctx.r9.u32, ctx.r8.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x8222708C;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r7,148(r27)
+@@ -1148,7 +1244,15 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 120);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	{
++		static int s_v120_count = 0;
++		if (s_v120_count < 40) {
++			++s_v120_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+120, right after both item-update loops) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v120_count, ctx.r31.u32, ctx.r11.u32, ctx.r10.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x822270F4;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,0(r31)
+@@ -1159,7 +1263,15 @@
+ 	ctx.r8.u64 = REX_LOAD_U32(ctx.r9.u32 + 104);
+ 	// mtctr r8
+ 	ctx.ctr.u64 = ctx.r8.u64;
+-	// bctrl 
++	{
++		static int s_v104_count = 0;
++		if (s_v104_count < 40) {
++			++s_v104_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+104, end-category candidate) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v104_count, ctx.r31.u32, ctx.r9.u32, ctx.r8.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82227108;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ loc_82227108:
+@@ -1180,7 +1292,15 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 96);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	{
++		static int s_v96_count = 0;
++		if (s_v96_count < 40) {
++			++s_v96_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82226F00 indirect-call (self-vtable+96, VERY LAST call in function -- end-draw/present candidate) #{}: self=0x{:08X} vtable_ptr=0x{:08X} call_target=0x{:08X}",
++			            s_v96_count, ctx.r31.u32, ctx.r11.u32, ctx.r10.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x82227128;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// addi r1,r1,144

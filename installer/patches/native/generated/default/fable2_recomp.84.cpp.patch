@@ -1,0 +1,82 @@
+--- a/native/generated/default/fable2_recomp.84.cpp
++++ b/native/generated/default/fable2_recomp.84.cpp
+@@ -1,4 +1,5 @@
+ #include "fable2_funcs.84.h"
++#include "../../src/glyph_system.h"
+ 
+ DEFINE_REX_FUNC(sub_82174C08) {
+ 	REX_FUNC_PROLOGUE();
+@@ -22030,6 +22031,73 @@
+ 	// lwz r4,0(r11)
+ 	ctx.r4.u64 = REX_LOAD_U32(ctx.r11.u32 + 0);
+ loc_82BFD7AC:
++	// DIAGNOSTIC (2026-09-13, targeted runtime trace for the "kind=1"
++	// texture decode investigation -- see glyph-vfs-redirect-status.md).
++	// sub_82817748's own name-resolve path (the widget-icon-specific
++	// wrapper this glyph investigation originally centered on) was
++	// instrumented first and confirmed, via a full Book/pause-menu +
++	// options-screen + equipment-screen test pass (fable2_071.log), to
++	// NEVER resolve navigation_tabs.tex or frames_elements.tex -- zero
++	// hits, and no LB/RB/B/X/Y icon name was resolved via that path in the
++	// same pass either, consistent with those coming from a persistently-
++	// loaded shared atlas rather than a per-icon dynamic resolve.
++	//
++	// This function (sub_82BFD780) is the actual, single shared "resolve
++	// resource by name" primitive underneath that wrapper -- confirmed via
++	// static search to have ~92 call sites across ~48 different generated
++	// files, i.e. essentially every subsystem that resolves anything by
++	// name goes through here, not just the widget-icon path already ruled
++	// out. Instrumenting here (rather than each of those 48 call sites)
++	// catches a name-based resolve of these two textures regardless of
++	// which caller triggers it.
++	//
++	// r4 at this exact point holds either the per-call name pointer
++	// (loc_82BFD7A8 branch, taken when *(r3+0) is non-null) or a hardcoded
++	// fallback string constant (the branch not taken here) -- in both
++	// cases expected to be a valid guest char* under this function's own
++	// calling convention (the same value, threaded through unchanged, is
++	// what sub_82817748's caller-side post-return read of its own stack
++	// slot already recovers as a legible name like
++	// 'art\gui\controller\icon_button_a.tex'). No real function call has
++	// happened yet in this function body at this point (only loads/
++	// stores/branches since entry), so ctx.r12 here is still this
++	// function's OWN caller's return address, captured at entry -- no
++	// separate stash needed, unlike the sub_82817748 patch.
++	//
++	// Guarded with the same bounded/printable-ASCII safety scan used
++	// throughout this codebase (glyph_system.cpp's OnResourceResolved, the
++	// sub_82817748 patch) -- a garbage pointer here just fails the scan
++	// and produces no log line, never a crash. Deliberately narrow:
++	// exact-name substring match only, read-only, additive. Remove once
++	// the kind=1 decode investigation concludes.
++	{
++		uint32_t probe_ptr = ctx.r4.u32;
++		if (probe_ptr >= 0x10000) {
++			char probe_name[64] = {};
++			size_t probe_len = 0;
++			while (probe_len < 63) {
++				char c = static_cast<char>(REX_LOAD_U8(probe_ptr + probe_len));
++				if (c == '\0') break;
++				if (static_cast<unsigned char>(c) < 32 || static_cast<unsigned char>(c) > 126) break;
++				probe_name[probe_len] = c;
++				++probe_len;
++			}
++			auto contains_ci = [](const char* hay, const char* needle) {
++				for (const char* p = hay; *p; ++p) {
++					const char* h = p;
++					const char* n = needle;
++					while (*h && *n && *h == *n) { ++h; ++n; }
++					if (!*n) return true;
++				}
++				return false;
++			};
++			if (probe_len > 0 && (contains_ci(probe_name, "navigation_tabs") || contains_ci(probe_name, "frames_elements"))) {
++				REXLOG_INFO("[GlyphSystem] [KIND1TRACE2] sub_82BFD780 resolving TARGET '{}' name_ptr=0x{:08X} caller_lr=0x{:08X}",
++				            probe_name, probe_ptr, ctx.r12.u32);
++			}
++		}
++	}
++
+ 	// addi r3,r1,80
+ 	ctx.r3.s64 = ctx.r1.s64 + 80;
+ 	// bl 0x8217ab58

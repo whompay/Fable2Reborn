@@ -1,0 +1,503 @@
+{
+ "format": 1,
+ "xex_note": "made from the disc's original files",
+ "targets": [
+  {
+   "target": "data/art/_gui_x360/gui.gdb",
+   "base": "data/art/gui/gui.gdb",
+   "base_sha256": "8ca5b21310df9a3e32b79d48cd456689ea0f5c2288e7c89924067dfe442ed753",
+   "final_sha256": "8ca5b21310df9a3e32b79d48cd456689ea0f5c2288e7c89924067dfe442ed753",
+   "final_size": 2023,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_x360/gui.list",
+   "base": "data/art/gui/gui.list",
+   "base_sha256": "ec776478a2e35b2b22dd73fb9e61b94e8d1a94f3c9512eb2a4de516988677fb2",
+   "final_sha256": "ec776478a2e35b2b22dd73fb9e61b94e8d1a94f3c9512eb2a4de516988677fb2",
+   "final_size": 17,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_x360/gui_models.bnk",
+   "base": "data/art/gui/gui_models.bnk",
+   "base_sha256": "9bbfe5425a06d3a4933f39d01677134ca482272fb5ed5d4792a9cc13af0950ee",
+   "final_sha256": "9bbfe5425a06d3a4933f39d01677134ca482272fb5ed5d4792a9cc13af0950ee",
+   "final_size": 37944,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_x360/gui_streaming.bnk",
+   "base": "data/art/gui/gui_streaming.bnk",
+   "base_sha256": "5480fbe937530b88e7fa5bfdea8a812b69723ef30c86fbf4b43bc2b88ce7201c",
+   "final_sha256": "5480fbe937530b88e7fa5bfdea8a812b69723ef30c86fbf4b43bc2b88ce7201c",
+   "final_size": 33128,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_x360/gui_texture_headers.bnk",
+   "base": "data/art/gui/gui_texture_headers.bnk",
+   "base_sha256": "f10e4c00707b7290a778e0c8b412a9a8b2cece5a48fa4489b37a8a6cdcf84c30",
+   "final_sha256": "f10e4c00707b7290a778e0c8b412a9a8b2cece5a48fa4489b37a8a6cdcf84c30",
+   "final_size": 135460,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_x360/gui_textures.bnk",
+   "base": "data/art/gui/gui_textures.bnk",
+   "base_sha256": "0e51fbc731ecbac1d140eac2c9f7b945958d0db2f9c6467069d0ab59856daaf4",
+   "final_sha256": "0e51fbc731ecbac1d140eac2c9f7b945958d0db2f9c6467069d0ab59856daaf4",
+   "final_size": 25185220,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_kbm/gui.gdb",
+   "base": "data/art/gui/gui.gdb",
+   "base_sha256": "8ca5b21310df9a3e32b79d48cd456689ea0f5c2288e7c89924067dfe442ed753",
+   "final_sha256": "8ca5b21310df9a3e32b79d48cd456689ea0f5c2288e7c89924067dfe442ed753",
+   "final_size": 2023,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_kbm/gui.list",
+   "base": "data/art/gui/gui.list",
+   "base_sha256": "ec776478a2e35b2b22dd73fb9e61b94e8d1a94f3c9512eb2a4de516988677fb2",
+   "final_sha256": "ec776478a2e35b2b22dd73fb9e61b94e8d1a94f3c9512eb2a4de516988677fb2",
+   "final_size": 17,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_kbm/gui_models.bnk",
+   "base": "data/art/gui/gui_models.bnk",
+   "base_sha256": "9bbfe5425a06d3a4933f39d01677134ca482272fb5ed5d4792a9cc13af0950ee",
+   "final_sha256": "9bbfe5425a06d3a4933f39d01677134ca482272fb5ed5d4792a9cc13af0950ee",
+   "final_size": 37944,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_kbm/gui_streaming.bnk",
+   "base": "data/art/gui/gui_streaming.bnk",
+   "base_sha256": "5480fbe937530b88e7fa5bfdea8a812b69723ef30c86fbf4b43bc2b88ce7201c",
+   "final_sha256": "5480fbe937530b88e7fa5bfdea8a812b69723ef30c86fbf4b43bc2b88ce7201c",
+   "final_size": 33128,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/_gui_kbm/gui_texture_headers.bnk",
+   "base": "data/art/gui/gui_texture_headers.bnk",
+   "base_sha256": "f10e4c00707b7290a778e0c8b412a9a8b2cece5a48fa4489b37a8a6cdcf84c30",
+   "final_sha256": "d29b29e090635395e668c8df9e0437f1d081c1b88681d3a5905aa6ef214bd7f6",
+   "final_size": 135460,
+   "kind": "ranges",
+   "ranges": [
+    [
+     55213,
+     23
+    ],
+    [
+     55291,
+     1
+    ]
+   ],
+   "blob": "10.bin"
+  },
+  {
+   "target": "data/art/_gui_kbm/gui_textures.bnk",
+   "base": "data/art/gui/gui_textures.bnk",
+   "base_sha256": "0e51fbc731ecbac1d140eac2c9f7b945958d0db2f9c6467069d0ab59856daaf4",
+   "final_sha256": "b282d1691d89f7afdf17509cca296d5d8594592cfea4d182839773be9c8a694a",
+   "final_size": 25447368,
+   "kind": "ranges",
+   "ranges": [
+    [
+     19,
+     1
+    ],
+    [
+     45,
+     59
+    ],
+    [
+     139,
+     2722
+    ],
+    [
+     2886,
+     15
+    ],
+    [
+     2921,
+     93
+    ],
+    [
+     3040,
+     2
+    ],
+    [
+     3099,
+     107
+    ],
+    [
+     3234,
+     77
+    ],
+    [
+     3350,
+     8855
+    ],
+    [
+     12238,
+     13
+    ],
+    [
+     12277,
+     3503
+    ],
+    [
+     3136369,
+     991
+    ],
+    [
+     3759797,
+     16383
+    ],
+    [
+     4592177,
+     991
+    ],
+    [
+     6531093,
+     16383
+    ],
+    [
+     10103601,
+     991
+    ],
+    [
+     10597049,
+     991
+    ],
+    [
+     12902681,
+     1023
+    ],
+    [
+     18421589,
+     16383
+    ],
+    [
+     20536385,
+     991
+    ],
+    [
+     21026133,
+     16383
+    ],
+    [
+     21162777,
+     991
+    ],
+    [
+     25185220,
+     262148
+    ]
+   ],
+   "blob": "11.bin"
+  },
+  {
+   "target": "data/art/gui/gui_textures_x360.bnk",
+   "base": "data/art/gui/gui_textures.bnk",
+   "base_sha256": "0e51fbc731ecbac1d140eac2c9f7b945958d0db2f9c6467069d0ab59856daaf4",
+   "final_sha256": "0e51fbc731ecbac1d140eac2c9f7b945958d0db2f9c6467069d0ab59856daaf4",
+   "final_size": 25185220,
+   "kind": "copy"
+  },
+  {
+   "target": "data/art/gui/gui_textures_kbm.bnk",
+   "base": "data/art/gui/gui_textures.bnk",
+   "base_sha256": "0e51fbc731ecbac1d140eac2c9f7b945958d0db2f9c6467069d0ab59856daaf4",
+   "final_sha256": "6a3cb65d7821e07d230d3d8709c9a0c7dbe856e204a38476719ae4db0bbaf0ee",
+   "final_size": 25447368,
+   "kind": "ranges",
+   "ranges": [
+    [
+     19,
+     1
+    ],
+    [
+     45,
+     59
+    ],
+    [
+     139,
+     2722
+    ],
+    [
+     2886,
+     15
+    ],
+    [
+     2921,
+     93
+    ],
+    [
+     3040,
+     2
+    ],
+    [
+     3099,
+     107
+    ],
+    [
+     3234,
+     77
+    ],
+    [
+     3350,
+     8855
+    ],
+    [
+     12238,
+     13
+    ],
+    [
+     12277,
+     3503
+    ],
+    [
+     3136353,
+     1023
+    ],
+    [
+     3759797,
+     16383
+    ],
+    [
+     4592161,
+     1023
+    ],
+    [
+     6531093,
+     16383
+    ],
+    [
+     10103585,
+     1023
+    ],
+    [
+     10597033,
+     1023
+    ],
+    [
+     12902681,
+     1023
+    ],
+    [
+     18421589,
+     16383
+    ],
+    [
+     20536369,
+     1023
+    ],
+    [
+     21026133,
+     16383
+    ],
+    [
+     21162761,
+     1023
+    ],
+    [
+     25185220,
+     262148
+    ]
+   ],
+   "blob": "13.bin"
+  },
+  {
+   "target": "data/art/gui/gui_textures.bnk",
+   "base": "data/art/gui/gui_textures.bnk",
+   "base_sha256": "0e51fbc731ecbac1d140eac2c9f7b945958d0db2f9c6467069d0ab59856daaf4",
+   "final_sha256": "6a3cb65d7821e07d230d3d8709c9a0c7dbe856e204a38476719ae4db0bbaf0ee",
+   "final_size": 25447368,
+   "kind": "same",
+   "same_as": "data/art/gui/gui_textures_kbm.bnk"
+  },
+  {
+   "target": "data/art/gui/gui_texture_headers.bnk",
+   "base": "data/art/gui/gui_texture_headers.bnk",
+   "base_sha256": "f10e4c00707b7290a778e0c8b412a9a8b2cece5a48fa4489b37a8a6cdcf84c30",
+   "final_sha256": "d29b29e090635395e668c8df9e0437f1d081c1b88681d3a5905aa6ef214bd7f6",
+   "final_size": 135460,
+   "kind": "same",
+   "same_as": "data/art/_gui_kbm/gui_texture_headers.bnk"
+  },
+  {
+   "target": "data/gamescripts_r.bnk",
+   "base": "data/gamescripts_r.bnk",
+   "base_sha256": "68a2ef1f703c3c325f268edcd5cdadbc5c869e96cf7c7e2e38bc017153c876e2",
+   "final_sha256": "5b3c9617ac7f6051a47f567e4eb13eed19fc7584cedc41d88afd7ac9b2a18ca6",
+   "final_size": 2265084,
+   "kind": "bank",
+   "entries": [
+    {
+     "name": "scripts\\quests\\generictriggers.lua",
+     "usize": 12959,
+     "base_sha256": "647cec6f2a413177cdf25eedc6aaaa582157c20b0b638f68f01b5ef0e04869a2",
+     "final_sha256": "1e2ae04cb819edc3700162ffb583914ae42f1b001f13f2bd66147698db7fc89a",
+     "blob_offset": 0,
+     "ranges": [
+      [
+       8079,
+       3
+      ],
+      [
+       8151,
+       3
+      ],
+      [
+       8223,
+       3
+      ],
+      [
+       8295,
+       3
+      ],
+      [
+       8367,
+       3
+      ],
+      [
+       8439,
+       3
+      ],
+      [
+       8511,
+       3
+      ],
+      [
+       8583,
+       3
+      ]
+     ],
+     "blob_size": 24
+    },
+    {
+     "name": "scripts\\miscellaneous\\saveload\\postscriptsloaded.lua",
+     "usize": 18888,
+     "base_sha256": "4d72b0774abe77e60a7e8017bcc73b4f508736200dac747dd722d06dff47be31",
+     "final_sha256": "c9650532b122c960f31e9faf919d7e09d603b94a9e91b917158f264f1018c3c2",
+     "blob_offset": 24,
+     "ops": [
+      [
+       "c",
+       0,
+       2949
+      ],
+      [
+       "i",
+       2
+      ],
+      [
+       "c",
+       2951,
+       695
+      ],
+      [
+       "i",
+       168
+      ],
+      [
+       "c",
+       3646,
+       4
+      ],
+      [
+       "i",
+       1
+      ],
+      [
+       "c",
+       3651,
+       798
+      ],
+      [
+       "i",
+       118
+      ],
+      [
+       "c",
+       4449,
+       10276
+      ],
+      [
+       "i",
+       1
+      ],
+      [
+       "c",
+       14726,
+       350
+      ],
+      [
+       "i",
+       20
+      ],
+      [
+       "c",
+       15076,
+       3506
+      ]
+     ],
+     "blob_size": 310
+    },
+    {
+     "name": "scripts\\camera\\stringandcagecamera.lua",
+     "usize": 63898,
+     "base_sha256": "ff28aad37dd9a242d02f69e21d0ff15579500748ca1de062282a81401c3f72c1",
+     "final_sha256": "96f3052c4e248ba6dc8420f9cc88e1659e269b6834293ebecd4c30a77bfd763e",
+     "blob_offset": 334,
+     "ranges": [
+      [
+       97,
+       10
+      ],
+      [
+       137,
+       18
+      ],
+      [
+       2859,
+       2
+      ],
+      [
+       36991,
+       3
+      ],
+      [
+       61877,
+       9
+      ]
+     ],
+     "blob_size": 42
+    },
+    {
+     "name": "scripts\\camera\\firstpersoncamera.lua",
+     "usize": 5380,
+     "base_sha256": "b2f64cac0266a28270aea7da117771ebc33fa81d29105cba16417ffc90490d6d",
+     "final_sha256": "5ea42f9c1063f96cb7170238e1fee105e0792a77ba1cc3659beca8e509597172",
+     "blob_offset": 376,
+     "ranges": [
+      [
+       307,
+       2
+      ]
+     ],
+     "blob_size": 2
+    }
+   ],
+   "blob": "16.bin"
+  }
+ ]
+}

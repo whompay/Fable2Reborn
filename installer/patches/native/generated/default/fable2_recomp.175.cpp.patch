@@ -1,0 +1,24 @@
+--- a/native/generated/default/fable2_recomp.175.cpp
++++ b/native/generated/default/fable2_recomp.175.cpp
+@@ -1,4 +1,5 @@
+ #include "fable2_funcs.175.h"
++#include "../../src/glyph_system.h"
+ 
+ DEFINE_REX_FUNC(sub_8217C328) {
+ 	REX_FUNC_PROLOGUE();
+@@ -2009,12 +2010,15 @@
+ 
+ DEFINE_REX_FUNC(sub_822B2D60) {
+ 	REX_FUNC_PROLOGUE();
++	uint32_t user_index = ctx.r3.u32;
++	uint32_t state_ptr = ctx.r4.u32;
+ 	// mr r5,r4
+ 	ctx.r5.u64 = ctx.r4.u64;
+ 	// li r4,1
+ 	ctx.r4.s64 = 1;
+ 	// b 0x832b249c
+ 	__imp__XamInputGetState(ctx, base);
++	fable2::glyph::OnInputPolled(user_index, state_ptr, ctx.r3.u32, base);
+ 	return;
+ }
+ 

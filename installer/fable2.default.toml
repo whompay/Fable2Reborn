@@ -1,0 +1,16 @@
+# Fable II PC settings. The launcher (Fable II.exe) and the in-game PC Settings menu write this
+# file; the game reads it at startup. Delete it to get the defaults back.
+mnk_mode = true
+mnk_mouse = true
+mnk_sensitivity = 10.000000
+keybind_a = "F"
+keybind_b = "C"
+keybind_lstick_press = "Control"
+keybind_dpad_up = "Up"
+keybind_dpad_down = "Down"
+keybind_dpad_left = "Left"
+keybind_dpad_right = "Right"
+keybind_start = "Escape"
+fable2_disable_msaa = true
+fable2_mouse_y_scale = 0.750000
+swap_post_effect = "fxaa"

@@ -1,0 +1,43 @@
+--- a/native/generated/default/fable2_recomp.28.cpp
++++ b/native/generated/default/fable2_recomp.28.cpp
+@@ -2246,6 +2246,22 @@
+ 
+ DEFINE_REX_FUNC(sub_822CD988) {
+ 	REX_FUNC_PROLOGUE();
++	// DIAGNOSTIC (2026-09-12): sub_822CD988 -- identified this round as the
++	// caller of sub_82226F00 (via its return_addr(lr) diagnostic +
++	// codegen.partition.json, fable2_038.log). Calls sub_82226F00 once, then
++	// conditionally loops over a [begin,end) child-record array calling
++	// sub_823FC878 per record. fable2_039.log showed 0 sub_823FC878 hits despite
++	// 40/40 sub_82226F00 hits -- this entry diagnostic is to find THIS
++	// function's own caller so the graph can continue upward past the
++	// (apparently empty, for this widget) child loop.
++	{
++		static int s_entry_count = 0;
++		if (s_entry_count < 40) {
++			++s_entry_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_822CD988 (sub_82226F00 caller) invocation #{}: r3(self)=0x{:08X} return_addr(lr)=0x{:08X}",
++			            s_entry_count, ctx.r3.u32, static_cast<uint32_t>(ctx.lr));
++		}
++	}
+ 	uint32_t ea{};
+ 	// mflr r12
+ 	ctx.r12.u64 = ctx.lr;
+@@ -2294,6 +2310,17 @@
+ loc_822CD9D4:
+ 	// cmplw cr6,r31,r10
+ 	ctx.cr6.compare<uint32_t>(ctx.r31.u32, ctx.r10.u32, ctx.xer);
++	// DIAGNOSTIC (2026-09-12): sub_822CD988 -- log the child-record [begin,end)
++	// range right before the empty-range early-exit check, to directly confirm
++	// (rather than infer) whether it's empty for this widget/self.
++	{
++		static int s_range_count = 0;
++		if (s_range_count < 40) {
++			++s_range_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_822CD988 child-range check #{}: self(r29)=0x{:08X} begin(r31)=0x{:08X} end(r10)=0x{:08X} empty={}",
++			            s_range_count, ctx.r29.u32, ctx.r31.u32, ctx.r10.u32, ctx.r31.u32 == ctx.r10.u32);
++		}
++	}
+ 	// beq cr6,0x822cda0c
+ 	if (ctx.cr6.eq) goto loc_822CDA0C;
+ 	// cmplw cr6,r31,r11

@@ -1,0 +1,57 @@
+--- a/native/generated/default/fable2_pch.h
++++ b/native/generated/default/fable2_pch.h
+@@ -340,26 +340,37 @@
+ // Interrupt Locks
+ //=============================================================================
+ 
+-inline std::atomic<i32>& ppc_global_lock_count_() {
+-  static std::atomic<i32> count{0};
+-  return count;
++// PERF-1006 (2026-10-06, playbook 4.14 / Saints Row): the guest "interrupts
++// off" region used to lock ONE process-wide recursive mutex (shared with the
++// runtime and the GPU texture cache) at 8406 sites, almost all of them
++// mtmsrd/lwarx/add/stwcx./mtmsrd reference-count updates. On the console,
++// turning interrupts off only stops this hardware thread from being
++// preempted; it never kept other cores out, and stwcx. here is already a real
++// compare-and-swap. So only a per-thread depth is kept (mfmsr reads it).
++// Set the environment variable REX_GUEST_GLOBAL_LOCK=1 to bring the old shared
++// lock back for A/B testing.
++inline i32& ppc_global_lock_depth_() {
++  thread_local i32 depth = 0;
++  return depth;
+ }
+ 
+-#define REX_CHECK_GLOBAL_LOCK()                                        \
+-  ([&]() -> u64 {                                                      \
+-    auto lock_ = rex::thread::global_critical_region::AcquireDirect(); \
+-    return ppc_global_lock_count_().load() ? 0 : 0x8000;               \
+-  }())
++inline const bool ppc_guest_global_lock_ = [] {
++  const char* v = std::getenv("REX_GUEST_GLOBAL_LOCK");
++  return v && v[0] == '1';
++}();
+ 
+-#define REX_ENTER_GLOBAL_LOCK()                          \
+-  do {                                                   \
+-    rex::thread::global_critical_region::mutex().lock(); \
+-    ppc_global_lock_count_().fetch_add(1);               \
++#define REX_CHECK_GLOBAL_LOCK() (u64(ppc_global_lock_depth_() ? 0 : 0x8000))
++
++#define REX_ENTER_GLOBAL_LOCK()                            \
++  do {                                                     \
++    if (ppc_guest_global_lock_)                            \
++      rex::thread::global_critical_region::mutex().lock(); \
++    ++ppc_global_lock_depth_();                            \
+   } while (0)
+ 
+-#define REX_LEAVE_GLOBAL_LOCK()                                                           \
+-  do {                                                                                    \
+-    auto old_count_ = ppc_global_lock_count_().fetch_sub(1);                              \
+-    assert(old_count_ >= 1 && "LeaveGlobalLock called without matching EnterGlobalLock"); \
+-    rex::thread::global_critical_region::mutex().unlock();                                \
++#define REX_LEAVE_GLOBAL_LOCK()                              \
++  do {                                                       \
++    --ppc_global_lock_depth_();                              \
++    if (ppc_guest_global_lock_)                              \
++      rex::thread::global_critical_region::mutex().unlock(); \
+   } while (0)

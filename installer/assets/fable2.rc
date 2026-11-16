@@ -1,0 +1,2 @@
+// App icon for the installer, setup and launcher executables (embedded by build.rs).
+1 ICON "fable2.ico"

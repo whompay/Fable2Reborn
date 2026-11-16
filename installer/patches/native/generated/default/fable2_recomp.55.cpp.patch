@@ -1,0 +1,29 @@
+--- a/native/generated/default/fable2_recomp.55.cpp
++++ b/native/generated/default/fable2_recomp.55.cpp
+@@ -1836,6 +1836,26 @@
+ 	REX_FUNC_PROLOGUE();
+ 	PPCRegister temp{};
+ 	uint32_t ea{};
++	// DIAGNOSTIC (2026-09-13): sub_82293568 -- identified this round (fable2_042.log)
++	// as sub_822B6128's stable caller (return_addr(lr)=0x82293928 matches this
++	// function's own bl-compiled call site below). This is a large per-frame
++	// "Update all sub-components" driver for a composite panel/widget object
++	// (self=r3/r31): it updates ~15+ sub-object fields in sequence (offsets 20,
++	// 24,28,32,36,40,44,48,52,56,60,64,68,72,76,84,88,92,96,100,104,112...), one
++	// of which (self+48) is passed as sub_822B6128's own "self". This is a
++	// STRUCTURALLY DIFFERENT object graph from the already-exhausted icon-legend
++	// renderer_self=0x42207A20 chain -- if self here is the pause-menu/card panel
++	// object itself (not the shared icon-legend renderer), this is a promising
++	// new root. No static caller exists (registered-only) -- logging entry state
++	// and return_addr(lr) to find ITS caller too.
++	{
++		static int s_entry_count = 0;
++		if (s_entry_count < 60) {
++			++s_entry_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82293568 entry #{}: self(r3)=0x{:08X} dt(f1)={} return_addr(lr)=0x{:08X}",
++			            s_entry_count, ctx.r3.u32, ctx.f1.f64, static_cast<uint32_t>(ctx.lr));
++		}
++	}
+ 	// mflr r12
+ 	ctx.r12.u64 = ctx.lr;
+ 	// bl 0x82ca2be0

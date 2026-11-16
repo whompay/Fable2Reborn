@@ -1,0 +1,167 @@
+--- a/native/generated/default/fable2_recomp.9.cpp
++++ b/native/generated/default/fable2_recomp.9.cpp
+@@ -620,6 +620,52 @@
+ DEFINE_REX_FUNC(sub_821DDE30) {
+ 	REX_FUNC_PROLOGUE();
+ 	uint32_t ea{};
++	// DIAGNOSTIC (2026-09-13): pivot round -- sub_822B6128 (fable2_recomp.165.cpp,
++	// confirmed firing repeatedly in fable2_042.log with a stable caller,
++	// sub_82293568) was found to ALSO funnel into this same function via a
++	// different route (through a global-singleton vtable+20 accessor rather than
++	// the r1+720 struct the icon-legend chain uses). Since this function's
++	// vtable+12 "insert" dispatch is shared across every caller and its cap was
++	// likely already exhausted by the much-more-frequent icon-legend chain in
++	// prior captures, capturing the ORIGINAL entry return address here (before
++	// any of this function's own `bl`s overwrite ctx.lr) lets the two existing
++	// call-target diagnostics below be tagged with which caller triggered them,
++	// so a fresh capture can isolate sub_822B6128's specific call target instead
++	// of it being drowned out. Purely additive.
++	uint32_t diag_entry_lr = static_cast<uint32_t>(ctx.lr);
++	uint32_t diag_entry_r3 = ctx.r3.u32;
++
++	// PERFORMANCE FIX (2026-09-13, fable2_050.log round): sub_821DDE30's
++	// three diagnostics (this one, plus the vtable+16 and vtable+12
++	// call-target logs further below) are disabled by capping their logged
++	// count at kClosedBranchLogCap=0. This branch was already conclusively
++	// closed in an earlier round ("this branch is now closed for good -- no
++	// further tracing down sub_82817BC8/sub_8229B5D0/sub_821DDE30/
++	// sub_82A3D640 is warranted", see glyph-vfs-redirect-status.md's
++	// fable2_035.log-round section) -- it's a confirmed generic named-
++	// property registration system, unrelated to texture/icon rendering.
++	// This function is called from MANY hot paths across the whole game
++	// (the icon-legend chain, plus a generic entity-notification system
++	// that alone contributed 98/120 of one cap's hits in a single capture --
++	// see the `sub_823FC178` entry in glyph-vfs-redirect-status.md), so
++	// leaving three REXLOG_INFO call sites live in it was a real,
++	// significant contributor to the fable2_050.log boot-stall regression
++	// alongside the round-5 bank-scan bug (see glyph_system.cpp's
++	// RunBankHashScanBackground for that half of the fix). The atomic
++	// counters themselves are left in place (trivial cost, and preserve the
++	// exact code shape for the identical hit-counting technique used
++	// elsewhere in this investigation) -- only the logging is gated off.
++	// Raise kClosedBranchLogCap back up if this branch ever needs
++	// re-opening for a specific caller (e.g. sub_822B6128) again.
++	constexpr int kClosedBranchLogCap = 0;
++	{
++		static std::atomic<int> s_entry_count{0};
++		int n = s_entry_count.fetch_add(1, std::memory_order_relaxed);
++		if (n < kClosedBranchLogCap) {
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_821DDE30 entry #{}: container_self(r3)=0x{:08X} arg2(r4)=0x{:08X} arg3(r5)=0x{:08X} return_addr(lr)=0x{:08X}",
++			            n, ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, diag_entry_lr);
++		}
++	}
+ 	// mflr r12
+ 	ctx.r12.u64 = ctx.lr;
+ 	// bl 0x82ca2be0
+@@ -643,7 +689,29 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 16);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++
++	// DIAGNOSTIC (2026-09-12): log the actual resolved indirect-call target
++	// (r27's "vtable" pointer at r11, and the function address read from
++	// r11+16) instead of guessing what this dispatch does. See AI_HANDOFF.md
++	// -- the previous assumption that r27 (this function's r27/"container
++	// self" argument) carries the resolved icon resource pointer at a fixed
++	// offset was disproven by runtime evidence (fable2_034.log): the field
++	// actually holds a debug/property name string address, meaning this
++	// whole call chain is very likely a generic named-property registration
++	// system unrelated to texture content. Logging the concrete call target
++	// here lets us identify (via codegen.partition.json) exactly which
++	// function this is, closing the question definitively either way.
++	// Purely additive: logging only, no control-flow change.
++	{
++		static std::atomic<int> s_slot16_call_count{0};
++		int n = s_slot16_call_count.fetch_add(1, std::memory_order_relaxed);
++		if (n < kClosedBranchLogCap) {
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_821DDE30 indirect-call (vtable+16) #{}: r27=0x{:08X} vtable_ptr(r11)=0x{:08X} call_target=0x{:08X} entry_return_addr(lr)=0x{:08X}",
++			            n, ctx.r27.u32, ctx.r11.u32, ctx.r10.u32, diag_entry_lr);
++		}
++	}
++
++	// bctrl
+ 	ctx.lr = 0x821DDE5C;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// clrlwi r9,r3,24
+@@ -778,7 +846,35 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 12);
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++
++	// DIAGNOSTIC (2026-09-12, revised): this is the final "register/insert
++	// new row" step -- an indirect (vtable slot 12) dispatch on r27. The
++	// prior theory that r27's field at +496 held the resolved icon resource
++	// pointer was DISPROVEN by runtime evidence (fable2_034.log showed
++	// zeros/floats/flags there, never a known res_id) -- direct inspection
++	// of default.pe subsequently showed r27's own "vtable pointer" field is
++	// actually the ADDRESS OF A DEBUG/PROPERTY NAME STRING (e.g.
++	// "LIGHTING_PRESS_SKY_COLOUR_BOTTOM"), not a real vtable at all in the
++	// C++ sense -- meaning this whole call chain is very likely a generic
++	// named-property registration system (shared with lighting/AI/camera/
++	// quest property getters -- see AI_HANDOFF.md), unrelated to texture
++	// content. Now logging the resolved call target address itself
++	// (call_target=r10, read from vtable_ptr+12) so the target function can
++	// be identified directly via codegen.partition.json, definitively
++	// confirming or ruling out this branch instead of guessing further
++	// offsets. Purely additive: logging only, no control-flow change.
++	// Remove once the menu glyph investigation concludes -- see
++	// AI_HANDOFF.md.
++	{
++		static std::atomic<int> s_insert_trace_count{0};
++		int n = s_insert_trace_count.fetch_add(1, std::memory_order_relaxed);
++		if (n < kClosedBranchLogCap) {
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_821DDE30 indirect-call (vtable+12) #{}: container_self=0x{:08X} vtable_ptr(r11)=0x{:08X} call_target=0x{:08X} new_row=0x{:08X} legend_val=0x{:08X} entry_return_addr(lr)=0x{:08X}",
++			            n, ctx.r27.u32, ctx.r11.u32, ctx.r10.u32, ctx.r31.u32, ctx.r26.u32, diag_entry_lr);
++		}
++	}
++
++	// bctrl
+ 	ctx.lr = 0x821DDF50;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,44(r31)
+@@ -21103,6 +21199,43 @@
+ DEFINE_REX_FUNC(sub_82B4B2B8) {
+ 	REX_FUNC_PROLOGUE();
+ 	uint32_t ea{};
++
++	// DIAGNOSTIC (2026-09-13, fable2_048.log round): sub_82B4B2B8 is the
++	// SECOND (and, per an exhaustive grep of the whole recompiled tree, only
++	// other) static caller of sub_822CA580 -- the game's own name-hash
++	// function, see GameNameHash32() in glyph_system.cpp -- besides the
++	// already-fully-traced sub_822F2088 memoization accessor (a confirmed
++	// dead end for texture purposes, see glyph-vfs-redirect-status.md). This
++	// function builds a fresh local red-black-tree-style index (it
++	// allocates its own 36-byte sentinel node early on) and, in one of its
++	// loops, computes sub_822CA580() on a per-record string and caches the
++	// result into that record's own +28 field -- i.e. structurally this
++	// looks like a generic "build a fast name-hash index over an array of
++	// named records" utility. It is NOT yet confirmed to have anything to do
++	// with gui_texture_headers.bnk specifically (no bnk_base-relative
++	// address appears anywhere in this function), but it is the only other
++	// place in the whole binary that calls the exact same hash function, so
++	// it is a genuine, concrete lead for where a PERSISTENT hash-indexed
++	// table (as opposed to this function's own ephemeral, per-call one)
++	// might ultimately be built from. Has no static caller anywhere in the
++	// recompiled tree (registered only -- fable2_register.cpp:25674 -- the
++	// same indirect-dispatch-only pattern as every other UI-adjacent
++	// function traced so far in this investigation). Logging the entry
++	// return address (captured before any of this function's own `bl`s can
++	// overwrite ctx.lr) so a future capture can identify its caller directly
++	// via codegen.partition.json -- the exact technique that has already
++	// worked for every other caller-less function in this investigation
++	// (sub_8226EA00, sub_822272C0, sub_82227160, sub_82226F00, etc.). Purely
++	// additive: logging only, no control-flow change.
++	{
++		static std::atomic<int> s_82b4b2b8_entry_count{0};
++		int diag_n = s_82b4b2b8_entry_count.fetch_add(1, std::memory_order_relaxed);
++		if (diag_n < 80) {
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82B4B2B8 entry #{}: self(r3)=0x{:08X} arg2(r4)=0x{:08X} arg3(r5)=0x{:08X} return_addr(lr)=0x{:08X}",
++			            diag_n, ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, static_cast<uint32_t>(ctx.lr));
++		}
++	}
++
+ 	// mflr r12
+ 	ctx.r12.u64 = ctx.lr;
+ 	// bl 0x82ca2bc4

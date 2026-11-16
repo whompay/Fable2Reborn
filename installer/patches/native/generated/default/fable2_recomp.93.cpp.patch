@@ -1,0 +1,62 @@
+--- a/native/generated/default/fable2_recomp.93.cpp
++++ b/native/generated/default/fable2_recomp.93.cpp
+@@ -13768,6 +13768,30 @@
+ 	ctx.cr6.compare<int32_t>(ctx.r11.s32, -1, ctx.xer);
+ 	// beq cr6,0x82817c14
+ 	if (ctx.cr6.eq) goto loc_82817C14;
++
++	// DIAGNOSTIC (2026-09-12): this is the "cache hit" branch -- the
++	// persistent slot at *r31 (address = r31, an incoming argument derived
++	// by the caller, sub_82817748, as "r11+8" off a per-icon-slot record)
++	// already holds a built value (!= -1) and is reused via sub_82261A80
++	// WITHOUT ever rebuilding via sub_8229B5D0 below. Logging every hit
++	// (bounded) to see whether this slot is EVER rebuilt during a test
++	// window, or whether it was already permanently cached before this
++	// investigation's tracing started (e.g. during initial boot/UI
++	// warm-up, possibly before the VFS redirect had registered) -- which
++	// would directly explain a resolve that is provably correct every
++	// frame (see glyph_system.cpp's OnResourceResolved trace) still
++	// displaying stale/wrong pixels. Purely additive: logging only.
++	// Remove once the menu glyph investigation concludes -- see
++	// glyph-vfs-redirect-status.md.
++	{
++		static std::atomic<int> s_cache_hit_count{0};
++		int n = s_cache_hit_count.fetch_add(1, std::memory_order_relaxed);
++		if (n < 40) {
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82817BC8 CACHE HIT #{}: slot_addr=0x{:08X} cached_value=0x{:08X}",
++			            n, ctx.r31.u32, ctx.r11.u32);
++		}
++	}
++
+ 	// mr r4,r3
+ 	ctx.r4.u64 = ctx.r3.u64;
+ 	// li r5,1
+@@ -13805,6 +13829,28 @@
+ 	// bl 0x8229b5d0
+ 	ctx.lr = 0x82817C34;
+ 	sub_8229B5D0(ctx, base);
++
++	// DIAGNOSTIC (2026-09-12): this is the "cache MISS / rebuild" branch --
++	// the only place in this function that actually calls sub_8229B5D0 to
++	// build a fresh value and store it into the persistent slot at *r31.
++	// Logging every occurrence (bounded) to see whether a rebuild EVER
++	// happens during a test window, and if so, how its timing (relative to
++	// VFS redirect registration / first cache-hit logs) compares. If this
++	// never fires while the CACHE HIT diagnostic above fires repeatedly for
++	// the same slot_addr, that proves the slot was built exactly once,
++	// before this trace window began, and is a strong candidate for the
++	// "correct resolve, wrong displayed glyph" bug. Purely additive:
++	// logging only. Remove once the menu glyph investigation concludes --
++	// see glyph-vfs-redirect-status.md.
++	{
++		static std::atomic<int> s_cache_miss_count{0};
++		int n = s_cache_miss_count.fetch_add(1, std::memory_order_relaxed);
++		if (n < 40) {
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82817BC8 CACHE MISS/REBUILD #{}: slot_addr=0x{:08X} built_value=0x{:08X}",
++			            n, ctx.r31.u32, ctx.r3.u32);
++		}
++	}
++
+ 	// stw r3,0(r31)
+ 	REX_STORE_U32(ctx.r31.u32 + 0, ctx.r3.u32);
+ loc_82817C38:

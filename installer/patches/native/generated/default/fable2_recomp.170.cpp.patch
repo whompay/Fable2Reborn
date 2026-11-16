@@ -1,0 +1,50 @@
+--- a/native/generated/default/fable2_recomp.170.cpp
++++ b/native/generated/default/fable2_recomp.170.cpp
+@@ -2434,6 +2434,25 @@
+ 
+ DEFINE_REX_FUNC(sub_822CD918) {
+ 	REX_FUNC_PROLOGUE();
++	// DIAGNOSTIC (2026-09-12): sub_822CD918 -- identified this round as
++	// sub_822CD890's caller (fable2_041.log: every sub_822CD890 invocation's
++	// return_addr(lr)=0x822CD960 lands exactly on this function's own indirect
++	// call site below). Single-argument (r3=self) iterator: walks a
++	// [begin,end) array of object pointers (begin=*(self+36), count=*(self+44),
++	// re-read each iteration), and for each entry calls entry_vtable[+20]
++	// (entry, self+56) -- confirmed to resolve to sub_822CD890 for every
++	// entry observed so far. This is very likely the top-level "for each
++	// active icon-legend panel, Update/Draw it" driver -- the entry
++	// diagnostic below is to find ITS caller and see whether self/the array
++	// contents vary across widget types (cards/tutorial) or frames.
++	{
++		static int s_entry_count = 0;
++		if (s_entry_count < 60) {
++			++s_entry_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_822CD918 (icon-legend panel iterator) invocation #{}: r3(self)=0x{:08X} begin=0x{:08X} count={} context_field(self+56)=0x{:08X} return_addr(lr)=0x{:08X}",
++			            s_entry_count, ctx.r3.u32, REX_LOAD_U32(ctx.r3.u32 + 36), REX_LOAD_U32(ctx.r3.u32 + 44), REX_LOAD_U32(ctx.r3.u32 + 56), static_cast<uint32_t>(ctx.lr));
++		}
++	}
+ 	uint32_t ea{};
+ 	// mflr r12
+ 	ctx.r12.u64 = ctx.lr;
+@@ -2471,9 +2490,20 @@
+ 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 0);
+ 	// lwz r10,20(r11)
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 20);
++	// DIAGNOSTIC (2026-09-12): sub_822CD918 -- per-entry call target (this is the call
++	// confirmed to resolve to sub_822CD890 every time so far; logging target+entry
++	// directly so a future capture can show whether it's ever something ELSE).
++	{
++		static int s_percall_count = 0;
++		if (s_percall_count < 60) {
++			++s_percall_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_822CD918 per-entry call #{}: entry(r3)=0x{:08X} target=0x{:08X} self_iter(r31)=0x{:08X}",
++			            s_percall_count, ctx.r3.u32, ctx.r10.u32, ctx.r31.u32);
++		}
++	}
+ 	// mtctr r10
+ 	ctx.ctr.u64 = ctx.r10.u64;
+-	// bctrl 
++	// bctrl
+ 	ctx.lr = 0x822CD960;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// lwz r9,40(r30)

@@ -1,0 +1,69 @@
+--- a/native/generated/default/fable2_recomp.165.cpp
++++ b/native/generated/default/fable2_recomp.165.cpp
+@@ -2174,6 +2174,22 @@
+ 	REX_FUNC_PROLOGUE();
+ 	PPCRegister temp{};
+ 	uint32_t ea{};
++	// DIAGNOSTIC (2026-09-13): sub_822B6128 -- secondary pivot-round candidate,
++	// the OTHER previously-flagged-but-never-traced alternate caller of the
++	// plain resolve-by-name function sub_82BFD780 (called further down this
++	// function). Static read suggests this is a hint/tutorial-overlay text/rect
++	// drawer (constructs a UV/screen rect from float constants around the
++	// sub_82BFD780 call) rather than an icon-legend consumer, but logging entry
++	// + its own caller since it's untested and unrelated to the exhausted
++	// chain either way. No static caller exists (registered-only).
++	{
++		static int s_entry_count = 0;
++		if (s_entry_count < 40) {
++			++s_entry_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_822B6128 entry #{}: self(r3)=0x{:08X} return_addr(lr)=0x{:08X}",
++			            s_entry_count, ctx.r3.u32, static_cast<uint32_t>(ctx.lr));
++		}
++	}
+ 	// mflr r12
+ 	ctx.r12.u64 = ctx.lr;
+ 	// bl 0x82ca2be0
+@@ -2562,6 +2578,17 @@
+ 	sub_82BFD780(ctx, base);
+ 	// mr r26,r3
+ 	ctx.r26.u64 = ctx.r3.u64;
++	// DIAGNOSTIC (2026-09-13): sub_822B6128 -- resolved resource pointer from
++	// sub_82BFD780. If this executes at all for pause-menu content, and the
++	// resolved pointer is nonzero, worth tracing what consumes r26 below.
++	{
++		static int s_resolve_count = 0;
++		if (s_resolve_count < 40) {
++			++s_resolve_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_822B6128 resolve #{}: resolved_resource(r26)=0x{:08X}",
++			            s_resolve_count, ctx.r26.u32);
++		}
++	}
+ 	// addi r3,r1,88
+ 	ctx.r3.s64 = ctx.r1.s64 + 88;
+ 	// bl 0x82214f08
+@@ -2616,7 +2643,24 @@
+ 	ctx.r6.u64 = REX_LOAD_U32(ctx.r7.u32 + 20);
+ 	// mtctr r6
+ 	ctx.ctr.u64 = ctx.r6.u64;
+-	// bctrl 
++	// DIAGNOSTIC (2026-09-13): sub_822B6128 -- this is the indirect (vtable
++	// slot 5) call on the global singleton at *(GLOBAL+26912), made right after
++	// the resolved_resource(r26) and constructed rect/color struct are ready.
++	// Its return value feeds (via one more pointer hop) into the already-known
++	// sub_821DDE30 named-property-system call below. Logging the resolved
++	// target directly -- if this differs from a generic accessor, it's worth
++	// reading in full; either way it tells us exactly what object type this
++	// resolves against for THIS call path (distinct from the icon-legend
++	// chain's r1+720 struct approach).
++	{
++		static int s_globalcall_count = 0;
++		if (s_globalcall_count < 60) {
++			++s_globalcall_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_822B6128 global-singleton-call #{}: global_obj(r3)=0x{:08X} vtable_ptr(r7)=0x{:08X} call_target(r6)=0x{:08X} resolved_resource(r26)=0x{:08X}",
++			            s_globalcall_count, ctx.r3.u32, ctx.r7.u32, ctx.r6.u32, ctx.r26.u32);
++		}
++	}
++	// bctrl
+ 	ctx.lr = 0x822B6434;
+ 	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+ 	// mr r4,r3

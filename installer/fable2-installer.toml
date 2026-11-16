@@ -1,0 +1,260 @@
+# fable2-installer manifest
+#
+# Everything the installer knows about the game and the port is here. Paths are relative to the
+# checkout root (the folder that holds `installer/`, `native/` and `tools/`).
+#
+# Placeholders available in steps and build commands:
+#   {root} {port} {toolkit}   the checkout, native/, tools/rexglue-sdk/win-amd64 (the ReXGlue SDK)
+#   {game} {xex}              the player's extracted disc (linked in as extracted/), its default.xex
+#   {installer}               installer/
+#   {python}                  the installer's private venv Python (packages installed)
+#   {work}                    scratch space: <root>/.installer/work
+#   {jobs}                    worker processes
+#   {file}                    the current match of a step's `for_each`
+#   build only: {cmake} {ninja} {cc} {cxx} (Visual Studio's LLVM clang / clang++) {build_jobs}
+#
+# Workflow
+#   maintainer:  python installer/fable2_data.py make --iso <game.iso> --tree extracted --out installer/data-patches
+#                fable2-installer make-patches --game extracted          -> installer/generated.lock + installer/patches/
+#                fable2-installer export --out <dir>                     -> the tree to publish
+#                fable2-installer package --out "dist/Fable II Setup.exe"
+#   player:      Fable II Setup.exe, or fable2-installer --iso <game.iso>  -> extract, regenerate, patch, build, "Fable II.exe"
+
+[game]
+title = "Fable II"
+title_ids = ["4D5307F1"]
+# sha256 of the disc's default.xex the port was built from (media 716F0A0D, version 0.0.0.26).
+xex_sha256 = ["88c4ef2e18e65409444d1b068eff921d1f7e180a5ae64edc64ba6b0872372662"]
+# The port finds the game at <checkout>/extracted (native/fable2_manifest.toml: game_root =
+# "../extracted"; the game exe walks up from itself to extracted/default.xex). A disc image is
+# copied there; a folder given with --game is linked there (a directory junction on Windows).
+link_name = "extracted"
+
+[layout]
+port = "native"
+toolkit = "tools/rexglue-sdk/win-amd64"
+
+[python]
+min_version = "3.10"
+requirements = []
+# tools/extract_pe.py decrypts default.xex with AES (the `cryptography` package).
+packages = ["cryptography"]
+
+# Files produced from the game. They are never published; the pipeline below regenerates them
+# on the player's machine and installer/patches/ turns them into the port's maintained versions.
+[generated]
+include = [
+  "native/generated/",
+  "native/default.pe",
+  "native/local-branch-repairs.json",
+]
+exclude = [
+  "**/*.bak",
+  "**/*.bak_*",
+  "**/*.bak-*",
+  "**/*.pre_*",
+  "**/*.before_*",
+  "**/*.orig",
+]
+# Codegen bookkeeping: holds absolute paths / timestamps of the machine it ran on.
+loose = [
+  "native/generated/default/codegen.d",
+  "native/generated/default/codegen.build.stamp",
+  "native/generated/default/codegen.stamp",
+  # an input (installer/codegen.partition.json) that codegen writes back
+  "native/generated/default/codegen.partition.json",
+]
+full_patch_ok = []
+
+# ---------------------------------------------------------------------------------------------
+# The pipeline. Steps run in order from the checkout root; a finished step is not re-run for the
+# same default.xex unless --regen is given. `optional` steps may fail (their features stay off).
+# ---------------------------------------------------------------------------------------------
+
+[[step]]
+id = "extract-pe"
+title = "Decrypt and unpack the game's executable (default.xex -> default.pe)"
+run = ["{python}", "{root}/tools/extract_pe.py", "{xex}", "{port}/default.pe"]
+outputs = ["native/default.pe"]
+
+# ReXGlue keeps each function in the output file it was first given (codegen.partition.json),
+# so the maintainer's file layout is reproduced only from the maintainer's partition. It holds
+# function addresses and file numbers, nothing else. make-patches.cmd refreshes the copy.
+[[step]]
+id = "codegen-partition"
+title = "Use the port's code layout (which function goes into which file)"
+builtin = "copy"
+args = ["{installer}/codegen.partition.json", "{port}/generated/default/codegen.partition.json"]
+
+[[step]]
+id = "codegen"
+title = "Recompile the game's PowerPC code to C++ (ReXGlue codegen; the long one)"
+run = ["{toolkit}/bin/rexglue.exe", "codegen", "--ignore-stamp"]
+cwd = "{port}"
+outputs = ["native/generated/**"]
+
+[[step]]
+id = "repair-branches"
+title = "Repair the reviewed local branches the code generator misclassifies"
+run = ["{python}", "{root}/tools/repair_local_branches.py", "--project", "{port}"]
+
+# The port's changes to the game's own data (keyboard/mouse button prompts in the GUI texture
+# banks, camera and reward script edits): installer/data-patches/, made with `fable2_data.py make`.
+# Originals it overwrites are kept in .installer/work/data-originals.
+[[step]]
+id = "game-data"
+title = "Apply the PC port's changes to the game data (button prompts, camera scripts)"
+run = ["{python}", "{installer}/fable2_data.py", "apply", "--game", "{game}",
+       "--patches", "{installer}/data-patches", "--backup", "{work}/data-originals"]
+
+# ---------------------------------------------------------------------------------------------
+# Build. Same steps as native/build.ps1 (GPU plugin first, then the game, then the GPU plugin is
+# copied next to the exe), in their own out/ folders so an install never touches a developer's
+# build trees. PGO is off (no profiles are shipped).
+#
+# Two CPU variants (cpu_variants = true): {flavor} = "install" with {avx2} = ON (FABLE2_AVX2 /
+# FABLE2_GPU_AVX2: AVX2+FMA, the fast build), or "install-compat" with {avx2} = OFF (SSE4.1 code;
+# the ReXGlue runtime itself is x86-64-v2). The installer builds the one this PC needs (--cpu
+# both / the setup's checkbox builds both); the launcher picks at every start.
+# ---------------------------------------------------------------------------------------------
+
+[[prebuild]]
+id = "gpu-configure"
+title = "Configure the Xenos graphics plugin"
+run = ["{cmake}", "-S", "{port}/gpu", "-B", "{port}/out/{flavor}-gpu", "-G", "Ninja",
+       "-DCMAKE_MAKE_PROGRAM={ninja}",
+       "-DCMAKE_BUILD_TYPE=Release",
+       "-DCMAKE_CXX_COMPILER={cxx}",
+       "-DCMAKE_PREFIX_PATH={toolkit}",
+       "-DFABLE2_GPU_AVX2={avx2}",
+       "-DFABLE2_PGO=off"]
+
+[[prebuild]]
+id = "gpu-compile"
+title = "Compile the Xenos graphics plugin"
+run = ["{cmake}", "--build", "{port}/out/{flavor}-gpu", "--parallel", "{build_jobs}"]
+log = "{port}/out/build-{flavor}-gpu.log"
+
+[build]
+cpu_variants = true
+configure = ["{cmake}", "-S", "{port}", "-B", "{port}/out/build/{flavor}", "-G", "Ninja",
+             "-DCMAKE_MAKE_PROGRAM={ninja}",
+             "-DCMAKE_C_COMPILER={cc}", "-DCMAKE_CXX_COMPILER={cxx}",
+             "-DCMAKE_BUILD_TYPE=Release",
+             "-DCMAKE_PREFIX_PATH={toolkit}",
+             "-DFABLE2_AVX2={avx2}",
+             "-DFABLE2_PGO=off",
+             "-DFABLE2_PYTHON={python}"]
+compile = ["{cmake}", "--build", "{port}/out/build/{flavor}", "--parallel", "{build_jobs}"]
+exe = "{port}/out/build/{flavor}/fable2.exe"
+log = "{port}/out/build-{flavor}.log"
+
+[[postbuild]]
+id = "gpu-plugin"
+title = "Put the graphics plugin next to the game"
+builtin = "copy"
+args = ["{port}/out/{flavor}-gpu/graphics/rexgpu-xenos.dll", "{port}/out/build/{flavor}/rexgpu-xenos.dll"]
+
+# native/fable2.toml holds the player's settings (the launcher and the in-game PC Settings menu
+# write it). It is only created when missing, so reinstalling or updating never resets them.
+[[postbuild]]
+id = "default-settings"
+title = "Default settings"
+builtin = "copy-if-missing"
+args = ["{installer}/fable2.default.toml", "{port}/fable2.toml"]
+
+# The game reads native/fable2.toml, extracted/ and native/user-data (saves) by walking up from
+# its own folder, so it runs from its build folder.
+[launch]
+name = "Play Fable II"
+cwd = "{port}/out/build/{flavor}"
+args = []
+
+# ---------------------------------------------------------------------------------------------
+# export: what is copied into the tree you publish. [generated] files are always left out. A file
+# is published if a `keep` pattern matches it, or no `exclude` pattern does.
+# Review the result before pushing.
+# ---------------------------------------------------------------------------------------------
+
+[export]
+exclude = [
+  # every file at the top of the checkout (notes, playbooks, dev scripts, the old emulator DLLs)
+  "*",
+  # the game, the old emulator setup, dev and scratch folders
+  "extracted/", "pc/", "logs/", "build/", "dist/", "_to_delete/", ".xenonbridge/",
+  "xenonbridge/", "xenonbridge_gui/", "Claude outputs/", "github/", "_public/",
+  # native/: everything but the sources (kept below)
+  "native/*", "native/*/",
+  # tools/: everything but the build's own helpers and the ReXGlue SDK / sources (kept below)
+  "tools/*", "tools/*/",
+  "tools/rexglue-sdk/win-amd64/bin/*.prebuilt_original",
+  # the installer's own build output and per-install files
+  "installer/target/", "installer/launch.txt", "installer/launcher-features.txt", "installer/*.log",
+  "installer/__pycache__/",
+  # anywhere: backups, caches, logs, build output
+  "**/__pycache__/", "**/*.pyc", "**/*.bak", "**/*.bak_*", "**/*.bak-*", "**/*.before_*",
+  "**/*.orig_backup", "**/*.log", "**/*.pdb", "**/*.ilk", "**/*.profraw", "**/*.profdata",
+]
+keep = [
+  # the repository front page: README, license, notice, art and GitHub templates
+  "README.md", "LICENSE", "NOTICE", ".gitignore",
+  "docs/**", ".github/**",
+  # the game project (native/build.ps1's inputs)
+  "native/CMakeLists.txt",
+  "native/CMakePresets.json",
+  "native/fable2_manifest.toml",
+  "native/README.md",
+  "native/src/*.cpp", "native/src/*.h",
+  "native/src/diagnostics/*.cpp", "native/src/diagnostics/*.h",
+  "native/gpu/CMakeLists.txt", "native/gpu/*.cpp",
+  # the app icon (fable2.exe embeds assets/fable2.ico) and its source art
+  "native/assets/fable2.ico", "native/assets/fable2-reborn-logo.png",
+  # the port's own keyboard/mouse prompt art (read at run time from pc/assets/glyphs)
+  "pc/assets/glyphs/*.bin", "pc/assets/glyphs/*.png",
+  # build helpers
+  "tools/repair_local_branches.py",
+  "tools/extract_pe.py",
+  "tools/lzx_decompress.py",
+  "tools/extract_iso.py",
+  "tools/lua51_disasm.py",
+  "tools/repack_gamescripts_bank.py",
+  "tools/patch_sac_free_pitch.py",
+  "tools/patch_sac_pitch_speed.py",
+  "tools/patch_generictriggers_website_rewards.py",
+  # ReXGlue: the prebuilt SDK (the game links against it; bin/ holds the port's rexruntime.dll)
+  "tools/rexglue-sdk/win-amd64/bin/*.exe", "tools/rexglue-sdk/win-amd64/bin/*.dll",
+  "tools/rexglue-sdk/win-amd64/cmake/**",
+  "tools/rexglue-sdk/win-amd64/include/**",
+  "tools/rexglue-sdk/win-amd64/lib/**",
+  "tools/rexglue-sdk/win-amd64/licenses/**",
+  "tools/rexglue-sdk/win-amd64/share/**",
+  # ... and its sources: native/gpu builds the Xenos plugin from tools/rexglue-source/src/graphics
+  "tools/rexglue-source/CMakeLists.txt",
+  "tools/rexglue-source/LICENSE",
+  "tools/rexglue-source/README.md",
+  "tools/rexglue-source/cmake/**",
+  "tools/rexglue-source/include/**",
+  "tools/rexglue-source/resources/**",
+  "tools/rexglue-source/src/**",
+  "tools/rexglue-source/thirdparty/**",
+]
+# Files that must NEVER leave this folder. `export` and `package` stop with an error if the rules
+# above would let any of them through.
+forbid = [
+  "extracted/**", "**/default.xex", "**/default.pe", "**/*.iso", "**/*.xex",
+  "**/*.bnk", "**/*.gdb", "**/*.bik",
+  "**/*HANDOFF*", "**/*handoff*", "**/*PLAYBOOK*",
+  "native/user-data/**", "native/save-backups/**", "native/cache/**", "native/_inspect/**",
+  "native/generated/**",
+  "pc/xenia*", "pc/cache*/**", "pc/patches/**", "pc/patch-source/**",
+  "Claude outputs/**",
+]
+
+# `fable2-installer update` and the setup's "Update now": where new versions come from (a GitHub
+# repository holding the `export` tree).
+[update]
+repo = "whompay/Fable2Reborn"
+branch = "main"
+# Folder inside the repository that holds this tree ("" = the repository root).
+path = ""
+obsolete = []

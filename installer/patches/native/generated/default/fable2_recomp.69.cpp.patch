@@ -1,0 +1,67 @@
+--- a/native/generated/default/fable2_recomp.69.cpp
++++ b/native/generated/default/fable2_recomp.69.cpp
+@@ -1,4 +1,5 @@
+ #include "fable2_funcs.69.h"
++#include "../../src/glyph_system.h"
+ 
+ DEFINE_REX_FUNC(sub_82174360) {
+ 	REX_FUNC_PROLOGUE();
+@@ -13263,6 +13264,58 @@
+ 	sub_82BFD780(ctx, base);
+ 	// mr r25,r3
+ 	ctx.r25.u64 = ctx.r3.u64;
++	{
++		uint32_t res_ptr = ctx.r3.u32;
++		if (res_ptr >= 0x10000) {
++			uint32_t str_data = REX_LOAD_U32(ctx.r1.u32 + 80);
++			if (str_data >= 0x10000) {
++				uint32_t buf_ptr = REX_LOAD_U32(str_data + 0);
++				if (buf_ptr >= 0x10000) {
++					fable2::glyph::OnResourceResolved(buf_ptr, res_ptr, base);
++
++					// DIAGNOSTIC (2026-09-11): correlate sub_82817748's own
++					// "self"/widget pointer (r31, saved from the incoming r3
++					// argument at function entry -- see "mr r31,r3" a few
++					// lines above the "bl 0x821f0108" call) against the 4
++					// distinct widget pointers sub_8226EA00 (the central
++					// button glyph dispatcher, fable2_recomp.211.cpp) logs
++					// when it fires for the pause/start menu. If these
++					// values match, it directly proves this resolve call is
++					// part of the menu's own widget dispatch (not an
++					// unrelated background/HUD system that happens to
++					// resolve the same name around the same time). Purely
++					// additive: logging only, no control-flow change.
++					// Remove once the menu glyph investigation concludes --
++					// see glyph-vfs-redirect-status.md.
++					static std::atomic<int> s_widget_trace_count{0};
++					int n = s_widget_trace_count.fetch_add(1, std::memory_order_relaxed);
++					// Cap raised 20 -> 150 (2026-09-12): the investigation now
++					// covers the pause/start menu, in-game UI cards (e.g. the
++					// "Warrant for Sneakiness" quest-item card, which shows
++					// Y/X/A prompts together), and tutorial popups in a single
++					// combined test pass, so more than 20 total resolves are
++					// expected. Also now reads and logs the actual resolved
++					// name string (bounded, same safe-length-scan pattern as
++					// OnResourceResolved) so each line is self-contained --
++					// no need to cross-reference against the separate
++					// ResourceTrace log line by pointer alone.
++					if (n < 150) {
++						char name_buf[256] = {};
++						size_t name_len = 0;
++						while (name_len < 255) {
++							char c = *reinterpret_cast<const char*>(base + buf_ptr + name_len);
++							if (c == '\0') break;
++							if (static_cast<unsigned char>(c) < 32 || static_cast<unsigned char>(c) > 126) break;
++							name_buf[name_len] = c;
++							++name_len;
++						}
++						REXLOG_INFO("[GlyphSystem] [DIAG] sub_82817748 resolve #{}: widget_self=0x{:08X} name='{}' name_ptr=0x{:08X} res_id=0x{:08X}",
++						            n, ctx.r31.u32, name_buf, buf_ptr, res_ptr);
++					}
++				}
++			}
++		}
++	}
+ 	// addi r3,r1,84
+ 	ctx.r3.s64 = ctx.r1.s64 + 84;
+ 	// bl 0x82214f08

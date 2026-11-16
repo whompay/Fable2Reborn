@@ -1,0 +1,34 @@
+--- a/native/generated/default/fable2_recomp.145.cpp
++++ b/native/generated/default/fable2_recomp.145.cpp
+@@ -1,4 +1,5 @@
+ #include "fable2_funcs.145.h"
++bool& FLAGS_fable2_vexptefp_fix_storage_();  // [BGFIX-1116] defined in native/src/pc_features.cpp
+ 
+ DEFINE_REX_FUNC(sub_8217A858) {
+ 	REX_FUNC_PROLOGUE();
+@@ -23984,6 +23985,10 @@
+ 	// vexptefp128 v63,v63
+ 	{
+ 		simde__m128 x = simde_mm_load_ps(ctx.v63.f32);
++		// [BGFIX-1116] vexptefp range fix (cvar fable2_vexptefp_fix), see HANDOFF-2026-11-16-bgfix.md
++		const bool bgfix_on = FLAGS_fable2_vexptefp_fix_storage_();
++		const simde__m128 bgfix_x_in = x;
++		if (bgfix_on) x = simde_mm_min_ps(simde_mm_max_ps(x, simde_mm_set1_ps(-127.0f)), simde_mm_set1_ps(128.0f));
+ 		simde__m128 n = simde_mm_round_ps(x, SIMDE_MM_FROUND_TO_NEG_INF | SIMDE_MM_FROUND_NO_EXC);
+ 		simde__m128 f = simde_mm_sub_ps(x, n);
+ 		simde__m128 p = simde_mm_set1_ps(1.8775767e-3f);
+@@ -23994,7 +23999,13 @@
+ 		p = simde_mm_add_ps(simde_mm_mul_ps(p, f), simde_mm_set1_ps(1.0f));
+ 		simde__m128i exp_bits = simde_mm_slli_epi32(
+ 			simde_mm_add_epi32(simde_mm_cvttps_epi32(n), simde_mm_set1_epi32(127)), 23);
+-		simde_mm_store_ps(ctx.v63.f32, simde_mm_mul_ps(p, simde_mm_castsi128_ps(exp_bits)));
++		simde__m128 bgfix_r = simde_mm_mul_ps(p, simde_mm_castsi128_ps(exp_bits));
++		if (bgfix_on) {
++			bgfix_r = simde_mm_andnot_ps(simde_mm_cmplt_ps(bgfix_x_in, simde_mm_set1_ps(-126.0f)), bgfix_r);
++			const simde__m128 bgfix_nan = simde_mm_cmpunord_ps(bgfix_x_in, bgfix_x_in);
++			bgfix_r = simde_mm_or_ps(simde_mm_and_ps(bgfix_nan, bgfix_x_in), simde_mm_andnot_ps(bgfix_nan, bgfix_r));
++		}
++		simde_mm_store_ps(ctx.v63.f32, bgfix_r);
+ 	}
+ 	// stvx128 v63,r0,r10
+ 	ea = (ctx.r10.u32) & ~0xF;

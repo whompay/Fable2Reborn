@@ -1,0 +1,29 @@
+Fable II Reborn
+Copyright 2026 whompay and the Fable II Reborn contributors
+
+This product includes software developed by the Fable II Reborn contributors and licensed under
+the Apache License, Version 2.0 (see LICENSE).
+
+Fable II Reborn is an unofficial fan project and is not affiliated with, endorsed or sponsored by
+Microsoft, Xbox Game Studios or Lionhead Studios. "Fable" is a trademark of Microsoft Corporation.
+This repository contains no game code or game data; the installer rebuilds the port from the
+player's own copy of the game.
+
+-------------------------------------------------------------------------------------------------
+Third-party components (distributed under their own licenses, not under Apache 2.0)
+-------------------------------------------------------------------------------------------------
+
+ReXGlue SDK and runtime (tools/rexglue-sdk, tools/rexglue-source)
+  Copyright (c) 2026, Tom Clay <tomc@tctechstuff.com>
+  BSD 3-Clause License, see tools/rexglue-source/LICENSE.
+  https://github.com/rexglue/rexglue-sdk
+
+  Portions derived from the Xenia project
+  Copyright (c) 2022, Ben Vanik and Xenia project contributors
+  BSD 3-Clause License. https://xenia.jp
+
+  Further libraries bundled with ReXGlue are listed, with their licenses, in
+  tools/rexglue-source/thirdparty and tools/rexglue-sdk/win-amd64/licenses.
+
+The 60 FPS presentation-interval and MSAA patches for media 716F0A0D are based on Margen67's
+title-specific patches.

@@ -1,0 +1,94 @@
+--- a/native/generated/default/fable2_recomp.73.cpp
++++ b/native/generated/default/fable2_recomp.73.cpp
+@@ -1,4 +1,7 @@
+ #include "fable2_funcs.73.h"
++#include "../../src/glyph_system.h"
++#include "../../src/anark_glyph_bindings.h"
++#include <rex/logging.h>
+ 
+ DEFINE_REX_FUNC(sub_82174460) {
+ 	REX_FUNC_PROLOGUE();
+@@ -22110,6 +22113,78 @@
+ 	// lwz r9,84(r1)
+ 	ctx.r9.u64 = REX_LOAD_U32(ctx.r1.u32 + 84);
+ loc_82BC1C84:
++	// KBM Anark/BGF scene-property correction: every Book-style screen decodes
++	// its node properties through this one shared routine, one property at a
++	// time. Immediately after a float property is decoded into r9 (just above),
++	// check it against a table of verified (scene, node, node-key, property)
++	// fingerprints built offline from the shipped .bgf files themselves
++	// (native/prepare_anark_glyph_bindings.py) and, on an exact match, correct
++	// the value before it is stored. This changes scene bindings only -- never
++	// the atlas/texture data, and never any property that doesn't exactly match
++	// a verified fingerprint+before-value, so untouched screens and unrelated
++	// properties can never be affected.
++	// Originally proven and live-tested as a single hardcoded case for
++	// OptionsScreen's Back/Material2270/abyx image (id 4083: shipped scene
++	// samples the old horizontal B cell at u=.25; working v3 atlas has SHIFT at
++	// u=.5, 64x64, v=.75) -- confirmed correct in-game. Generalized to the full
++	// table so every scene sharing the same component tree (Back/icon_button_b
++	// SHIFT correction, and MenuHighlight green_top[/_translucent] redirected to
++	// the working v3 abyx SPACE glyph) is fixed the same way, without repeating
++	// this hand-derived-fingerprint process per screen.
++	{
++		uint32_t anark_strings = REX_LOAD_U32(ctx.r28.u32 + 40);
++		uint32_t anark_node = REX_LOAD_U32(ctx.r1.u32 + 92);
++		uint32_t anark_hash = REX_LOAD_U32(ctx.r1.u32 + 96);
++		uint32_t anark_property = REX_LOAD_U32(ctx.r1.u32 + 104);
++		uint32_t anark_before = ctx.r9.u32;
++		uint32_t anark_value = anark_before;
++
++		// Diagnostic (2026-09-13, narrowed): filtered to exactly SOURCE/ORIGINAL_SOURCE
++		// for any tracked node -- this confirmed (fable2_082.log) that both now resolve
++		// correctly to abyx.tga's own live address for node=5327/5332/5337, matching the
++		// known-good Back/abyx reference node exactly. That mechanism is SOLVED; keep
++		// this narrow check for the back_shift (Back/abyx) nodes, which don't need the
++		// verbose version below.
++		if (fable2::glyph::IsKbmActive() && fable2::glyph::IsAnarkGlyphDiagNode(anark_node) &&
++		    !fable2::glyph::IsAnarkGlyphVerboseNode(anark_strings, anark_node) &&
++		    (anark_property == 0xADFB3A9Au || anark_property == 0xA88D885Fu)) {
++			static int s_anarkDiagCount = 0;
++			if (s_anarkDiagCount < 2000) {
++				++s_anarkDiagCount;
++				REXLOG_INFO("[GlyphSystem] [AnarkGlyphDiag] scene_strings={} node={} hash=0x{:08X} property=0x{:08X} value=0x{:08X}",
++				    anark_strings, anark_node, anark_hash, anark_property, anark_before);
++			}
++		}
++		// Diagnostic (2026-09-13, continued): even with SOURCE/ORIGINAL_SOURCE now
++		// correctly resolved (confirmed above), the MenuHighlight badge (green_top,
++		// green_top_translucent, rim_and_red) renders NOTHING -- not the intended
++		// SPACE glyph, not the painted rim_glow pill, not even a faint trace -- despite
++		// abyx.tga's target regions being directly confirmed present with real pixel
++		// content, and despite Material2315 (this badge's material) being structurally
++		// identical (same color/blend-flag properties) to Material2270 (Back/abyx's
++		// material, confirmed rendering fine). Nothing in the static .bgf property
++		// catalog built so far (NAME, position, rotation, scale, SOURCE/ORIGINAL_SOURCE,
++		// U/V/US/VS) explains total invisibility, so log EVERY property seen for
++		// exactly these badge-layer nodes (not the whole ~22-node tracked set, to keep
++		// volume manageable) to catch anything uncatalogued -- most likely an
++		// alpha/blend/visibility property -- rather than guessing at another asset.
++		if (fable2::glyph::IsKbmActive() && fable2::glyph::IsAnarkGlyphVerboseNode(anark_strings, anark_node)) {
++			static int s_anarkVerboseCount = 0;
++			if (s_anarkVerboseCount < 2000) {
++				++s_anarkVerboseCount;
++				REXLOG_INFO("[GlyphSystem] [AnarkGlyphVerbose] scene_strings={} node={} hash=0x{:08X} property=0x{:08X} value=0x{:08X}",
++				    anark_strings, anark_node, anark_hash, anark_property, anark_before);
++			}
++		}
++
++		if (fable2::glyph::IsKbmActive() &&
++		    fable2::glyph::CorrectAnarkGlyphProperty(anark_strings, anark_node, anark_hash, anark_property, anark_value)) {
++			ctx.r9.u64 = anark_value;
++			REX_STORE_U32(ctx.r1.u32 + 84, ctx.r9.u32);
++			REXLOG_INFO("[GlyphSystem] [AnarkGlyphBinding] scene_strings={} node={} property=0x{:08X} corrected 0x{:08X} -> 0x{:08X}",
++			    anark_strings, anark_node, anark_property, anark_before, anark_value);
++		}
++	}
+ 	// lwz r11,-7424(r18)
+ 	ctx.r11.u64 = REX_LOAD_U32(ctx.r18.u32 + -7424);
+ 	// rlwinm r30,r29,27,5,31
+@@ -36327,4 +36402,3 @@
+ 	__restgprlr_28(ctx, base);
+ 	return;
+ }
+-

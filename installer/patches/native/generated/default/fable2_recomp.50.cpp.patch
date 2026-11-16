@@ -1,0 +1,73 @@
+--- a/native/generated/default/fable2_recomp.50.cpp
++++ b/native/generated/default/fable2_recomp.50.cpp
+@@ -1,4 +1,7 @@
+ #include "fable2_funcs.50.h"
++#include "../../src/glyph_system.h"
++#include "../../src/anark_render_bindings.h"
++#include <rex/logging.h>
+ 
+ DEFINE_REX_FUNC(sub_82173708) {
+ 	REX_FUNC_PROLOGUE();
+@@ -12776,6 +12779,32 @@
+ 
+ DEFINE_REX_FUNC(sub_828152D0) {
+ 	REX_FUNC_PROLOGUE();
++	// FAC UV record owner, supplied by 8281A568 before calls clobber r5.
++	const uint32_t kbm_fac_model = ctx.r5.u32;
++	// 2026-09-15: REVERTED same day. The early-return suppression that used
++	// to be here (gated on ShouldSuppressAnarkRenderObjectForKbm(), matching
++	// model 6702 "rim_and_red"/6723 "KeyMarker") caused a confirmed, severe
++	// regression: rim_and_red is a SHARED Anark component id, reused for the
++	// selected-row highlight badge on ordinary menu screens (Abilities,
++	// Skills, etc.), not just the "Unlock" world door hold-prompt it was
++	// meant to target. Skipping this function's render-object setup entirely
++	// for that id left the GPU-side render object never (re)initialized this
++	// pass, which rendered as a solid opaque blue rectangle over the
++	// selected-row highlight on every normal menu screen while KBM was
++	// active -- confirmed live by the user immediately after this shipped.
++	// Matching by numeric model id alone is safe for REDIRECTS (see
++	// CorrectAnarkRenderBinding()/kAnarkRenderBindings below -- a redirect
++	// still produces a fully valid render object, just with different
++	// texture/UV content, so it's safe to apply everywhere that id appears).
++	// It is NOT safe for SUPPRESSION: skipping the draw entirely breaks
++	// every OTHER screen that legitimately uses the same shared id. Do not
++	// reintroduce a suppression keyed on model id alone; any future attempt
++	// at hiding rim_and_red/KeyMarker specifically for the world hold-prompt
++	// must first find a way to distinguish that one call site/context from
++	// every other screen's selected-row highlight use of the same ids (e.g.
++	// a caller/context parameter, not just `model`) -- see
++	// glyph-vfs-redirect-status.md for the full history, including this
++	// regression and its revert.
+ 	PPCRegister temp{};
+ 	uint32_t ea{};
+ 	// mflr r12
+@@ -12957,6 +12986,24 @@
+ 	ctx.f1.f64 = ctx.f31.f64;
+ 	// bl 0x82814ba8
+ 	ctx.lr = 0x82815400;
++	// Bind the selected-row artwork at render-object creation. SOURCE in the
++	// BGF is a separate authoring property; the draw descriptor instead uses
++	// this FAC texture hash at +512 (see 828156B8). Keep the hash and vertex
++	// UVs together, before 82814BA8 builds them and sets the normal dirty byte.
++	// 2026-11-15 live glyph switching: runs for every device now. The
++	// object is remembered (if it matches a binding rule) so it can be
++	// re-bound live on a later KBM<->controller switch; the correction itself
++	// is still only applied here while KBM is active.
++	{
++		uint32_t hash = REX_LOAD_U32(ctx.r30.u32 + 512);
++		if (fable2::glyph::IsKbmActive()) fable2::glyph::TraceAnarkRenderObjectCreated(kbm_fac_model, hash);
++		if (fable2::glyph::OnAnarkRenderObjectCreate(kbm_fac_model, ctx.r30.u32, hash,
++		    ctx.f1.f64, ctx.f2.f64, ctx.f3.f64, ctx.f4.f64)) {
++			REX_STORE_U32(ctx.r30.u32 + 512, hash);
++			REXLOG_INFO("[GlyphSystem] [AnarkRenderBinding] model={} texture=0x{:08X} uv={},{},{},{}",
++			    kbm_fac_model, hash, ctx.f1.f64, ctx.f2.f64, ctx.f3.f64, ctx.f4.f64);
++		}
++	}
+ 	sub_82814BA8(ctx, base);
+ 	// li r11,0
+ 	ctx.r11.s64 = 0;
+@@ -34374,4 +34421,3 @@
+ 	// blr 
+ 	return;
+ }
+-

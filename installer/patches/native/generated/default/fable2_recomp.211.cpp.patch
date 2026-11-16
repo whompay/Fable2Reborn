@@ -1,0 +1,243 @@
+--- a/native/generated/default/fable2_recomp.211.cpp
++++ b/native/generated/default/fable2_recomp.211.cpp
+@@ -1,4 +1,5 @@
+ #include "fable2_funcs.211.h"
++#include "page_transition_diag.h"
+ 
+ DEFINE_REX_FUNC(sub_8217F250) {
+ 	REX_FUNC_PROLOGUE();
+@@ -1277,6 +1278,39 @@
+ 
+ DEFINE_REX_FUNC(sub_8226EA00) {
+ 	REX_FUNC_PROLOGUE();
++	// DIAGNOSTIC (2026-09-11, revised): was a one-shot "first invocation"
++	// flag that couldn't tell us whether this function -- identified in an
++	// earlier investigation phase as the "central button glyph dispatcher"
++	// -- fires again when the pause/start menu is opened, vs. only ever
++	// firing once at the title screen. Converted to a bounded counter (first
++	// 5 calls) logging r3/r4 (this function's first two incoming PPC args,
++	// per the "mr r30,r3" / "stw r4,2172(r1)" lines just below) so a second
++	// invocation -- and whether its args differ from the first -- can be
++	// correlated against glyph_system.cpp's OnResourceResolved trace tap
++	// from the same test run. Purely additive: logging only, does not alter
++	// any translated register/control-flow behavior. Remove once the menu
++	// glyph investigation concludes -- see glyph-vfs-redirect-status.md.
++	static int s_entry_count = 0;
++	if (s_entry_count < 60) {
++		++s_entry_count;
++		// DIAGNOSTIC (2026-09-12): also log ctx.lr (the return address, i.e.
++		// the PPC instruction right after whatever "bl"/"bctrl" invoked this
++		// function) -- captured here at function entry, BEFORE anything in
++		// this function overwrites it. sub_8226EA00 has no direct "bl
++		// 0x8226ea00" call site anywhere in the generated tree (confirmed by
++		// grep across every locally-checked file) and its address appears
++		// nowhere as a literal constant in .rdata/.data (confirmed via a raw
++		// byte search of default.pe) -- it is only ever reached through the
++		// runtime's registrar (SetFunction), meaning something calls it via
++		// an indirect (bctrl) branch computed at runtime. Logging the actual
++		// return address lets us look up its containing function directly
++		// via codegen.partition.json instead of guessing further callers by
++		// hand. Purely additive: logging only, no control-flow change.
++		// Remove once the menu glyph investigation concludes -- see
++		// AI_HANDOFF.md.
++		REXLOG_INFO("[GlyphSystem] [DIAG] sub_8226EA00 (central button glyph dispatcher) invocation #{}: r3=0x{:08X} r4=0x{:08X} return_addr(lr)=0x{:08X}",
++		            s_entry_count, ctx.r3.u32, ctx.r4.u32, static_cast<uint32_t>(ctx.lr));
++	}
+ 	PPCRegister temp{};
+ 	uint32_t ea{};
+ 	// mflr r12
+@@ -6485,8 +6519,35 @@
+ 
+ DEFINE_REX_FUNC(sub_82557A30) {
+ 	REX_FUNC_PROLOGUE();
++	fable2::page_diag::Trace("sub_82557A30 entry", ctx.r3.u32, static_cast<uint32_t>(ctx.lr), 0,
++	    REX_LOAD_U32(ctx.r3.u32 + 84), REX_LOAD_U32(ctx.r3.u32 + 88),
++	    REX_LOAD_U8(ctx.r3.u32 + 154), REX_LOAD_U8(ctx.r3.u32 + 153));
+ 	PPCRegister temp{};
+ 	uint32_t ea{};
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- pivot-round candidate. Previously
++	// flagged (fable2_recomp.211.cpp) but never traced as an alternate caller of
++	// the plain resolve-by-name function sub_82BFD780, reached independently of
++	// the icon-legend Update/dispatch chain (sub_822CD918/...890/...988/
++	// sub_82226F00/sub_82227160/sub_8226EA00/sub_82817748) that has been fully
++	// exhausted this investigation and classified non-rendering. Static read:
++	// gates on (*(self+80))+148; if set, builds a name string via sub_821F3C28,
++	// resolves it via sub_8239E0D8->sub_821EEA00->sub_82BFD780, and on success
++	// allocates a 72-byte object (sub_8221F388), constructs something from the
++	// resolved resource into it (sub_832273F8/sub_8322CA88), CACHES the result
++	// into *(self+64), then calls what looks like a registration function
++	// (sub_822B83E0) with a global manager field and the cache-slot pointer.
++	// This is the first candidate this round that both resolves independently
++	// of the exhausted chain AND caches+registers something afterward, rather
++	// than just reading a named property. No static caller exists (registered-
++	// only, fable2_register.cpp:10328) so its own caller is also unknown.
++	{
++		static int s_entry_count = 0;
++		if (s_entry_count < 60) {
++			++s_entry_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 entry #{}: self(r3)=0x{:08X} cache_before(self+64)=0x{:08X} manager(self+80)=0x{:08X} return_addr(lr)=0x{:08X}",
++			            s_entry_count, ctx.r3.u32, REX_LOAD_U32(ctx.r3.u32 + 64), REX_LOAD_U32(ctx.r3.u32 + 80), static_cast<uint32_t>(ctx.lr));
++		}
++	}
+ 	// mflr r12
+ 	ctx.r12.u64 = ctx.lr;
+ 	// bl 0x82ca2be4
+@@ -6533,6 +6594,18 @@
+ 	ctx.r30.u64 = ctx.r28.u64;
+ 	// lwz r10,148(r11)
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 148);
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- gate check. If gate_value is
++	// always 0 for the icon-legend widgets, this whole path is skipped and is
++	// another dead end (same shape as the exhausted chain's dead branches);
++	// if nonzero, everything below (name-build/resolve/cache/register) runs.
++	{
++		static int s_gate_count = 0;
++		if (s_gate_count < 60) {
++			++s_gate_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 gate #{}: self(r27)=0x{:08X} manager(r11)=0x{:08X} gate_value(manager+148)=0x{:08X}",
++			            s_gate_count, ctx.r27.u32, ctx.r11.u32, ctx.r10.u32);
++		}
++	}
+ 	// cmpwi cr6,r10,0
+ 	ctx.cr6.compare<int32_t>(ctx.r10.s32, 0, ctx.xer);
+ 	// beq cr6,0x82557bdc
+@@ -6580,6 +6653,20 @@
+ 	// bl 0x821f3c28
+ 	ctx.lr = 0x82557AC0;
+ 	sub_821F3C28(ctx, base);
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- name string built by sub_821F3C28
++	// (called with two compile-time-constant string args -- likely a prefix +
++	// suffix concatenation). Logging the returned pointer as a guest C-string
++	// so we can see the actual resource/property name this path resolves,
++	// which tells us whether it's related to icon_button_* at all.
++	{
++		static int s_name_count = 0;
++		if (s_name_count < 60) {
++			++s_name_count;
++			const char* built_name = reinterpret_cast<const char*>(base + ctx.r3.u32);
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 name-build #{}: name_ptr=0x{:08X} name='{}'",
++			            s_name_count, ctx.r3.u32, built_name);
++		}
++	}
+ 	// lwz r6,80(r27)
+ 	ctx.r6.u64 = REX_LOAD_U32(ctx.r27.u32 + 80);
+ 	// mr r4,r3
+@@ -6591,6 +6678,17 @@
+ 	// bl 0x8239e0d8
+ 	ctx.lr = 0x82557AD4;
+ 	sub_8239E0D8(ctx, base);
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- lookup-by-name status. r3&0xFF
++	// (below) gates whether sub_82BFD780 (plain resolve) even runs. Logging the
++	// raw status plus the output buffer (r1+80) sub_8239E0D8 filled in.
++	{
++		static int s_lookup_count = 0;
++		if (s_lookup_count < 60) {
++			++s_lookup_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 lookup #{}: status(r3)=0x{:08X} out_buf(r1+80).word0=0x{:08X}",
++			            s_lookup_count, ctx.r3.u32, REX_LOAD_U32(ctx.r1.u32 + 80));
++		}
++	}
+ 	// clrlwi r5,r3,24
+ 	ctx.r5.u64 = ctx.r3.u32 & 0xFF;
+ 	// cmplwi cr6,r5,0
+@@ -6611,6 +6709,17 @@
+ 	sub_82BFD780(ctx, base);
+ 	// mr r30,r3
+ 	ctx.r30.u64 = ctx.r3.u64;
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- resolved resource pointer from
++	// sub_82BFD780 (the plain resolve-by-name function). If nonzero, the code
++	// below allocates+constructs+caches+registers from this pointer.
++	{
++		static int s_resolve_count = 0;
++		if (s_resolve_count < 60) {
++			++s_resolve_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 resolve #{}: resolved_resource(r30)=0x{:08X}",
++			            s_resolve_count, ctx.r30.u32);
++		}
++	}
+ 	// addi r3,r1,88
+ 	ctx.r3.s64 = ctx.r1.s64 + 88;
+ 	// bl 0x82214f08
+@@ -6633,6 +6742,18 @@
+ 	sub_8221F388(ctx, base);
+ 	// mr r29,r3
+ 	ctx.r29.u64 = ctx.r3.u64;
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- 72-byte allocation result. If
++	// nonzero, sub_832273F8 constructs something from resolved_resource(r30)
++	// into a stack buffer and sub_8322CA88 moves it into this allocated object,
++	// which then gets cached into *(self+64) below.
++	{
++		static int s_alloc_count = 0;
++		if (s_alloc_count < 60) {
++			++s_alloc_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 alloc #{}: alloc72(r29)=0x{:08X} resolved_resource(r30)=0x{:08X}",
++			            s_alloc_count, ctx.r29.u32, ctx.r30.u32);
++		}
++	}
+ 	// cmplwi cr6,r29,0
+ 	ctx.cr6.compare<uint32_t>(ctx.r29.u32, 0, ctx.xer);
+ 	// beq cr6,0x82557b48
+@@ -6653,6 +6774,18 @@
+ 	// bl 0x8322ca88
+ 	ctx.lr = 0x82557B40;
+ 	sub_8322CA88(ctx, base);
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- construct result. sub_832273F8
++	// built something at r1+96 from resolved_resource, sub_8322CA88 just moved/
++	// assigned it into alloc72(r29); r3 here is what gets stored via
++	// sub_8238A848 into the per-widget cache slot (*(self+64)) next.
++	{
++		static int s_construct_count = 0;
++		if (s_construct_count < 60) {
++			++s_construct_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 construct #{}: stack_buf(r1+96).word0=0x{:08X} alloc72(r29)=0x{:08X} sub_8322CA88_ret(r3)=0x{:08X}",
++			            s_construct_count, REX_LOAD_U32(ctx.r1.u32 + 96), ctx.r29.u32, ctx.r3.u32);
++		}
++	}
+ 	// mr r4,r3
+ 	ctx.r4.u64 = ctx.r3.u64;
+ 	// b 0x82557b4c
+@@ -6661,6 +6794,17 @@
+ 	// mr r4,r28
+ 	ctx.r4.u64 = ctx.r28.u64;
+ loc_82557B4C:
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- about to store into the per-
++	// widget cache slot (self+64, aliased as r31). r4 here is either the
++	// just-constructed object (success path) or 0 (failure/gate-skip path).
++	{
++		static int s_cachestore_count = 0;
++		if (s_cachestore_count < 60) {
++			++s_cachestore_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 cache-store #{}: cache_slot(r31=self+64)=0x{:08X} value_to_store(r4)=0x{:08X}",
++			            s_cachestore_count, ctx.r31.u32, ctx.r4.u32);
++		}
++	}
+ 	// mr r3,r31
+ 	ctx.r3.u64 = ctx.r31.u64;
+ 	// bl 0x8238a848
+@@ -6738,6 +6882,21 @@
+ 	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 12);
+ 	// lwz r3,88(r10)
+ 	ctx.r3.u64 = REX_LOAD_U32(ctx.r10.u32 + 88);
++	// DIAGNOSTIC (2026-09-13): sub_82557A30 -- this call site is only reached
++	// when the newly cached object (*(self+64)) is non-null (loc_82557B68 gate,
++	// checked earlier). r3 is read from a global-singleton chain
++	// (*(*(GLOBAL+26912)+12)+88) -- looks like a manager/registry object -- and
++	// r4=r31=self+64=the cache slot itself. If this is a "register sprite/
++	// object with render/draw-list manager" call, this is the render consumer
++	// we're looking for.
++	{
++		static int s_register_count = 0;
++		if (s_register_count < 60) {
++			++s_register_count;
++			REXLOG_INFO("[GlyphSystem] [DIAG] sub_82557A30 register-call #{}: manager_target(r3)=0x{:08X} cache_slot(r4=r31)=0x{:08X} cached_obj(*cache_slot)=0x{:08X}",
++			            s_register_count, ctx.r3.u32, ctx.r31.u32, REX_LOAD_U32(ctx.r31.u32 + 0));
++		}
++	}
+ 	// bl 0x822b83e0
+ 	ctx.lr = 0x82557BC8;
+ 	sub_822B83E0(ctx, base);
+@@ -34888,4 +35047,3 @@
+ 	__restgprlr_29(ctx, base);
+ 	return;
+ }
+-

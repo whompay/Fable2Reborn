@@ -1,0 +1,23 @@
+--- a/native/generated/default/fable2_recomp.161.cpp
++++ b/native/generated/default/fable2_recomp.161.cpp
+@@ -1,4 +1,5 @@
+ #include "fable2_funcs.161.h"
++#include "page_transition_diag.h"
+ 
+ DEFINE_REX_FUNC(sub_8217B6B0) {
+ 	REX_FUNC_PROLOGUE();
+@@ -7661,6 +7662,9 @@
+ 
+ DEFINE_REX_FUNC(sub_82558CC0) {
+ 	REX_FUNC_PROLOGUE();
++	fable2::page_diag::Trace("sub_82558CC0 entry", ctx.r3.u32, static_cast<uint32_t>(ctx.lr), ctx.r5.u32,
++	    REX_LOAD_U32(ctx.r3.u32 + 84), REX_LOAD_U32(ctx.r3.u32 + 88),
++	    REX_LOAD_U8(ctx.r3.u32 + 154), REX_LOAD_U8(ctx.r3.u32 + 153));
+ 	PPCRegister temp{};
+ 	uint32_t ea{};
+ 	// mflr r12
+@@ -35930,4 +35934,3 @@
+ 	ctx.lr = 0x8316F058;
+ 	sub_830FD318(ctx, base);
+ }
+-

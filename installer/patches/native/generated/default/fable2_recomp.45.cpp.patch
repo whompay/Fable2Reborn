@@ -1,0 +1,22 @@
+--- a/native/generated/default/fable2_recomp.45.cpp
++++ b/native/generated/default/fable2_recomp.45.cpp
+@@ -1,4 +1,5 @@
+ #include "fable2_funcs.45.h"
++#include "glyph_system.h"
+ 
+ DEFINE_REX_FUNC(sub_82172ED0) {
+ 	REX_FUNC_PROLOGUE();
+@@ -23666,6 +23667,8 @@
+ 
+ DEFINE_REX_FUNC(sub_82CA2C60) {
+ 	REX_FUNC_PROLOGUE();
++	if (ctx.r5.u32 == 16384 || ctx.r5.u32 == 16388)
++		fable2::glyph::TraceWorldInteractCopy(ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, static_cast<uint32_t>(ctx.lr), base);
+ 	uint32_t ea{};
+ 	// std r3,-8(r1)
+ 	REX_STORE_U64(ctx.r1.u32 + -8, ctx.r3.u64);
+@@ -37329,4 +37332,3 @@
+ 	// blr 
+ 	return;
+ }
+-
