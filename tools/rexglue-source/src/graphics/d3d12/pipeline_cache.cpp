@@ -3006,6 +3006,32 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
         blend_desc.BlendOpAlpha = kBlendOpMap[uint32_t(rt.blend_op_alpha)];
       }
       blend_desc.RenderTargetWriteMask = rt.write_mask;
+      // [BGFIX4] (diagnostic): log each distinct blend setup per render-target
+      // format once (RTV path). Cyan/pink blobs on bright foliage are gone with
+      // ROV, which clamps every blend result to the EDRAM format's range (7e3:
+      // 0..31.875); host blending in R16G16B16A16_FLOAT does not. This shows
+      // which blend ops/factors actually hit the HDR targets.
+      if (blend_desc.BlendEnable) {
+        static std::mutex bgfix4_mutex;
+        static std::set<uint32_t> bgfix4_seen;
+        const uint32_t key = uint32_t(rt.format) | (uint32_t(rt.src_blend) << 4) |
+                             (uint32_t(rt.dest_blend) << 8) | (uint32_t(rt.blend_op) << 12) |
+                             (uint32_t(rt.src_blend_alpha) << 16) |
+                             (uint32_t(rt.dest_blend_alpha) << 20) |
+                             (uint32_t(rt.blend_op_alpha) << 24);
+        bool first;
+        {
+          std::lock_guard<std::mutex> lock(bgfix4_mutex);
+          first = bgfix4_seen.insert(key).second;
+        }
+        if (first) {
+          REXGPU_INFO("[BGFIX4] blend rt_format={} color src={} dst={} op={} | alpha src={} "
+                      "dst={} op={}",
+                      uint32_t(rt.format), uint32_t(rt.src_blend), uint32_t(rt.dest_blend),
+                      uint32_t(rt.blend_op), uint32_t(rt.src_blend_alpha),
+                      uint32_t(rt.dest_blend_alpha), uint32_t(rt.blend_op_alpha));
+        }
+      }
     }
   }
 

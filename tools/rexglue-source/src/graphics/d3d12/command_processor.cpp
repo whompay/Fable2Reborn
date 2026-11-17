@@ -19,6 +19,8 @@
 #include <deque>
 #include <vector>
 #include <condition_variable>  // [PERF-1116] replay thread
+#include <atomic>  // [PERF-1117]
+#include <bit>  // [PERF-1117] std::countr_zero
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -255,7 +257,8 @@ REXCVAR_DEFINE_UINT32(fable2_memexport_submit_batch_draws, 128u, "Fable II",
 static bool fable2_memexport_flush_pending_ = false;
 static uint32_t fable2_memexport_flush_countdown_ = 0;
 
-// [PERF-1116]: replay thread (Saints Row approach, playbook 5.6). The deferred
+// [PERF-1116]: replay thread (Saints Row approach, playbook 5.6), default ON since
+// 2026-11-17 (Bowerstone 55 -> 62-64 fps, no issues). The deferred
 // command list of a finished submission is replayed onto the D3D12 command
 // list, closed, executed and signalled on a worker thread while the CP thread
 // already translates the next submission. One submission in flight on the
@@ -263,12 +266,46 @@ static uint32_t fable2_memexport_flush_countdown_ = 0;
 // swap submissions stay fully synchronous so the presenter's own queue work is
 // always ordered after the frame. See Fable2Replay* next to
 // CheckSubmissionFence for the thread-safety argument.
-REXCVAR_DEFINE_BOOL(fable2_replay_thread, false, "Fable II",
+REXCVAR_DEFINE_BOOL(fable2_replay_thread, true, "Fable II",
                     "Replay + submit GPU command lists on a separate thread so the GPU "
                     "command-processor thread can go on translating the next draws "
                     "(false = old behaviour: everything on the CP thread).")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 void Fable2PerfAddReplayWait(int64_t qpc_ticks);
+
+// [PERF-1117] (2026-11-17): per-draw command-processor (CP) caches, ported from
+// Saints Reborn's "perf round 5/5b" (same code, same verify mode). [PERF-STAT]
+// shows the CP thread at 98-100% busy in heavy scenes, so the CP's per-draw
+// cost is the frame-rate ceiling. Each switch is read once, at the first draw.
+// None of them changes what is drawn; with fable2_cp_verify = true the cached
+// result is recomputed 1 call in 16 and compared ("[PERF-1117] VERIFY" lines).
+REXCVAR_DEFINE_BOOL(fable2_cp_regs_fast, true, "Fable II",
+                    "[PERF-1117] Store context registers 0x2000-0x3FFF (no side effects) "
+                    "with one byte-swapping copy instead of a call per register.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(fable2_cp_translation_cache, true, "Fable II",
+                    "[PERF-1117] Remember the shader translation of each (shader, "
+                    "modification) instead of a map lookup per draw.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(fable2_cp_float_runs, true, "Fable II",
+                    "[PERF-1117] Copy runs of used float constants with one memcpy each.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(fable2_cp_const_compare, true, "Fable II",
+                    "[PERF-1117] Bool/loop and fetch constant writes that do not change the "
+                    "value no longer mark constant buffers / textures / vertex buffers dirty.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(fable2_cp_sampler_cache, true, "Fable II",
+                    "[PERF-1117] Skip recomputing sampler parameters when the sampler layout "
+                    "and all fetch constants are the same as at the last draw.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(fable2_cp_ib_whole_view, true, "Fable II",
+                    "[PERF-1117] Guest index buffers: one index buffer view of the whole "
+                    "shared memory, the offset goes into the draw (no IASetIndexBuffer per draw).")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(fable2_cp_verify, false, "Fable II",
+                    "[PERF-1117] Verify mode for the fable2_cp_* caches: recompute 1 in 16 "
+                    "and log how many differ (costs a little CP time; for testing).")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace rex::graphics::d3d12 {
 
@@ -293,6 +330,162 @@ void Fable2EndAsyncMemexport(ID3D12Fence* fence, uint64_t submission,
                              std::vector<Fable2MemexportCopy>&& copies);
 size_t Fable2PendingMemexportCount();
 uint64_t Fable2OldestPendingMemexportSubmission();
+
+// ---- [PERF-1117] per-draw CP caches (ported from Saints Reborn perf round 5/5b) ----
+namespace {
+struct P1117Switches {
+  bool regs_fast = true, trcache = true, float_runs = true, const_cmp = true,
+       sampler_cache = true, ib_view = true, verify = false;
+};
+const P1117Switches& P1117() {
+  static const P1117Switches s = [] {
+    P1117Switches r;
+    r.regs_fast = REXCVAR_GET(fable2_cp_regs_fast);
+    r.trcache = REXCVAR_GET(fable2_cp_translation_cache);
+    r.float_runs = REXCVAR_GET(fable2_cp_float_runs);
+    r.const_cmp = REXCVAR_GET(fable2_cp_const_compare);
+    r.sampler_cache = REXCVAR_GET(fable2_cp_sampler_cache);
+    r.ib_view = REXCVAR_GET(fable2_cp_ib_whole_view);
+    r.verify = REXCVAR_GET(fable2_cp_verify);
+    REXGPU_INFO("[PERF-1117] CP caches: regs_fast {} translation_cache {} float_runs {} "
+                "const_compare {} sampler_cache {} ib_whole_view {} verify {}",
+                r.regs_fast, r.trcache, r.float_runs, r.const_cmp, r.sampler_cache, r.ib_view,
+                r.verify);
+    return r;
+  }();
+  return s;
+}
+struct P1117VerifyStats {
+  uint64_t checked[4] = {};
+  uint64_t bad[4] = {};
+  uint64_t calls = 0;
+};
+P1117VerifyStats g_p1117_verify;  // CP thread only
+uint32_t g_p1117_sample = 0;      // CP thread only
+bool P1117Sample() { return P1117().verify && (++g_p1117_sample & 15) == 0; }
+void P1117VerifyNote(uint32_t kind, bool bad) {
+  P1117VerifyStats& v = g_p1117_verify;
+  ++v.checked[kind];
+  if (bad) {
+    ++v.bad[kind];
+  }
+  if (++v.calls >= 200000) {
+    REXGPU_INFO("[PERF-1117] VERIFY: regs_fast {} checked / {} differ | translation cache {} / {} | "
+                "float runs {} / {} | sampler cache {} / {}",
+                v.checked[0], v.bad[0], v.checked[1], v.bad[1], v.checked[2], v.bad[2],
+                v.checked[3], v.bad[3]);
+    v = P1117VerifyStats();
+  }
+}
+// Bumped when shader storage is loaded or caches are cleared (translations that
+// failed while loading are destroyed then).
+std::atomic<uint32_t> g_p1117_translation_epoch{1};
+struct P1117TranslationEntry {
+  const D3D12Shader* shader = nullptr;
+  uint64_t modification = 0;
+  uint32_t epoch = 0;
+  D3D12Shader::D3D12Translation* translation = nullptr;
+};
+P1117TranslationEntry g_p1117_translations[512];  // CP thread only
+D3D12Shader::D3D12Translation* P1117GetTranslation(D3D12Shader& shader, uint64_t modification) {
+  if (!P1117().trcache) {
+    return static_cast<D3D12Shader::D3D12Translation*>(shader.GetOrCreateTranslation(modification));
+  }
+  const uint64_t h = (uint64_t(reinterpret_cast<uintptr_t>(&shader)) >> 4) ^
+                     (modification * 0x9E3779B97F4A7C15ull);
+  P1117TranslationEntry& e = g_p1117_translations[(h ^ (h >> 29)) & 511];
+  const uint32_t epoch = g_p1117_translation_epoch.load(std::memory_order_relaxed);
+  if (e.shader == &shader && e.modification == modification && e.epoch == epoch) {
+    if (P1117Sample()) {
+      P1117VerifyNote(1, shader.GetOrCreateTranslation(modification) != e.translation);
+    }
+    return e.translation;
+  }
+  auto* translation =
+      static_cast<D3D12Shader::D3D12Translation*>(shader.GetOrCreateTranslation(modification));
+  e.shader = &shader;
+  e.modification = modification;
+  e.epoch = epoch;
+  e.translation = translation;
+  return translation;
+}
+// Copies the used float constants in bitmap order: each run of consecutive used
+// constants with one memcpy (same bytes as one vec4 at a time).
+uint8_t* P1117CopyFloatConstants(uint8_t* dst, const uint64_t* bitmap,
+                                 const uint32_t* src_constant_000) {
+  uint8_t* const dst_start = dst;
+  if (!P1117().float_runs) {
+    for (uint32_t i = 0; i < 4; ++i) {
+      uint64_t bits = bitmap[i];
+      while (bits) {
+        const uint32_t index = uint32_t(std::countr_zero(bits));
+        bits &= bits - 1;
+        std::memcpy(dst, src_constant_000 + (((i << 6) + index) << 2), 4 * sizeof(float));
+        dst += 4 * sizeof(float);
+      }
+    }
+    return dst;
+  }
+  for (uint32_t i = 0; i < 4; ++i) {
+    uint64_t bits = bitmap[i];
+    while (bits) {
+      const uint32_t first = uint32_t(std::countr_zero(bits));
+      const uint64_t shifted = bits >> first;
+      const uint32_t run = shifted == UINT64_MAX ? 64u : uint32_t(std::countr_zero(~shifted));
+      std::memcpy(dst, src_constant_000 + (((i << 6) + first) << 2),
+                  size_t(run) * 4 * sizeof(float));
+      dst += size_t(run) * 4 * sizeof(float);
+      bits = run == 64 ? 0 : bits & ~(((uint64_t(1) << run) - 1) << first);
+    }
+  }
+  if (P1117Sample()) {
+    const uint8_t* check = dst_start;
+    bool bad = false;
+    for (uint32_t i = 0; i < 4 && !bad; ++i) {
+      uint64_t bits = bitmap[i];
+      while (bits && !bad) {
+        const uint32_t index = uint32_t(std::countr_zero(bits));
+        bits &= bits - 1;
+        bad = std::memcmp(check, src_constant_000 + (((i << 6) + index) << 2),
+                          4 * sizeof(float)) != 0;
+        check += 4 * sizeof(float);
+      }
+    }
+    P1117VerifyNote(2, bad || check != dst);
+  }
+  return dst;
+}
+// Bumped whenever a fetch constant may have changed value, and at every swap
+// (sampler parameters also depend on settings such as anisotropy). CP thread only.
+uint64_t g_p1117_fetch_gen = 1;
+struct P1117SamplerCache {
+  size_t layout_uid = 0;
+  uint64_t fetch_gen = 0;
+  bool valid = false;
+};
+P1117SamplerCache g_p1117_sampler_cache[2];  // vertex, pixel; CP thread only
+// Index buffer view currently set in the deferred command list (CP thread only;
+// reset at every new submission).
+struct P1117IbState {
+  D3D12_GPU_VIRTUAL_ADDRESS location = 0;
+  UINT size = 0;
+  DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+  bool valid = false;
+};
+P1117IbState g_p1117_ib;
+// Byte-swapping copy that also says whether any value changed.
+bool P1117CopySwapChanged(uint32_t* dst, const uint32_t* src, uint32_t count) {
+  uint32_t diff = 0;
+  for (uint32_t i = 0; i < count; ++i) {
+    uint32_t raw;
+    std::memcpy(&raw, src + i, sizeof(raw));
+    const uint32_t v = rex::byte_swap(raw);
+    diff |= v ^ dst[i];
+    dst[i] = v;
+  }
+  return diff != 0;
+}
+}  // namespace
 
 static bool NeedsFable2MorphReadback(const RegisterFile& regs, uint32_t title) {
   const auto draw = regs.Get<reg::VGT_DRAW_INITIATOR>();
@@ -360,6 +553,8 @@ void D3D12CommandProcessor::ClearCaches() {
   CommandProcessor::ClearCaches();
   InvalidateAllVertexBufferResidency();
   cache_clear_requested_ = true;
+  g_p1117_translation_epoch.fetch_add(1, std::memory_order_relaxed);  // [PERF-1117]
+  ++g_p1117_fetch_gen;                                                // [PERF-1117]
 }
 
 void D3D12CommandProcessor::InvalidateGpuMemory() {
@@ -401,7 +596,9 @@ void D3D12CommandProcessor::InvalidateVertexBufferResidencyRange(uint32_t first_
 void D3D12CommandProcessor::InitializeShaderStorage(const std::filesystem::path& cache_root,
                                                     uint32_t title_id, bool blocking) {
   CommandProcessor::InitializeShaderStorage(cache_root, title_id, blocking);
+  g_p1117_translation_epoch.fetch_add(1, std::memory_order_relaxed);  // [PERF-1117]
   pipeline_cache_->InitializeShaderStorage(cache_root, title_id, blocking);
+  g_p1117_translation_epoch.fetch_add(1, std::memory_order_relaxed);  // [PERF-1117]
 }
 
 bool D3D12CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(memory::RingBuffer* reader,
@@ -2047,6 +2244,7 @@ void D3D12CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
     cbuffer_binding_bool_loop_.up_to_date = false;
   } else if (index >= XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0 &&
              index <= XE_GPU_REG_SHADER_CONSTANT_FETCH_31_5) {
+    ++g_p1117_fetch_gen;  // [PERF-1117]
     cbuffer_binding_fetch_.up_to_date = false;
     if (texture_cache_ != nullptr) {
       texture_cache_->TextureFetchConstantWritten((index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) /
@@ -2117,6 +2315,13 @@ void D3D12CommandProcessor::WriteRegistersFromMem(uint32_t start_index, uint32_t
 
   if (start_index >= XE_GPU_REG_SHADER_CONSTANT_BOOL_000_031 &&
       end_index <= XE_GPU_REG_SHADER_CONSTANT_LOOP_31) {
+    // [PERF-1117]: unchanged values leave the constant buffer as it is.
+    if (P1117().const_cmp) {
+      if (P1117CopySwapChanged(register_file_->values + start_index, base, num_registers)) {
+        cbuffer_binding_bool_loop_.up_to_date = false;
+      }
+      return;
+    }
     memory::copy_and_swap(register_file_->values + start_index, base, num_registers);
     cbuffer_binding_bool_loop_.up_to_date = false;
     return;
@@ -2124,6 +2329,49 @@ void D3D12CommandProcessor::WriteRegistersFromMem(uint32_t start_index, uint32_t
 
   if (start_index >= XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0 &&
       end_index <= XE_GPU_REG_SHADER_CONSTANT_FETCH_31_5) {
+    if (P1117().const_cmp) {
+      // [PERF-1117]: per dword, only the texture slots (6 dwords) and vertex
+      // fetch constants (2 dwords) whose value changed are invalidated.
+      // (Vertex buffers with an unchanged fetch constant would be found "in
+      // sync" by address/size in IssueDraw anyway.)
+      uint32_t* dst = register_file_->values + start_index;
+      const uint32_t first_fetch_dword = start_index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0;
+      uint32_t changed_textures = 0;
+      uint64_t changed_vfetch[2] = {};
+      for (uint32_t i = 0; i < num_registers; ++i) {
+        uint32_t raw;
+        std::memcpy(&raw, base + i, sizeof(raw));
+        const uint32_t v = rex::byte_swap(raw);
+        if (v != dst[i]) {
+          dst[i] = v;
+          const uint32_t d = first_fetch_dword + i;
+          changed_textures |= uint32_t(1) << (d / 6);
+          changed_vfetch[(d / 2) >> 6] |= uint64_t(1) << ((d / 2) & 63);
+        }
+      }
+      if (changed_textures) {
+        ++g_p1117_fetch_gen;
+        cbuffer_binding_fetch_.up_to_date = false;
+        if (texture_cache_) {
+          uint32_t slots = changed_textures;
+          while (slots) {
+            const uint32_t slot = uint32_t(std::countr_zero(slots));
+            slots &= slots - 1;
+            texture_cache_->TextureFetchConstantWritten(slot);
+          }
+        }
+        for (uint32_t w = 0; w < 2; ++w) {
+          uint64_t bits = changed_vfetch[w];
+          while (bits) {
+            const uint32_t b = uint32_t(std::countr_zero(bits));
+            bits &= bits - 1;
+            InvalidateVertexBufferResidency(w * 64 + b);
+          }
+        }
+      }
+      return;
+    }
+    ++g_p1117_fetch_gen;
     memory::copy_and_swap(register_file_->values + start_index, base, num_registers);
     cbuffer_binding_fetch_.up_to_date = false;
     uint32_t first_fetch_dword = start_index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0;
@@ -2132,6 +2380,30 @@ void D3D12CommandProcessor::WriteRegistersFromMem(uint32_t start_index, uint32_t
       texture_cache_->TextureFetchConstantsWritten(first_fetch_dword / 6, last_fetch_dword / 6);
     }
     InvalidateVertexBufferResidencyRange(first_fetch_dword / 2, last_fetch_dword / 2);
+    return;
+  }
+
+  // [PERF-1117]: context registers 0x2000-0x3FFF have no side effects in
+  // WriteRegister (only scratch, COHER_STATUS_HOST and the DC_LUT gamma ramp
+  // registers below 0x2000 and the constants from 0x4000 have) - store them with
+  // one byte-swapping copy instead of two virtual calls per register.
+  if (start_index >= 0x2000 && end_index < XE_GPU_REG_SHADER_CONSTANT_000_X &&
+      P1117().regs_fast) {
+    static_assert(XE_GPU_REG_SHADER_CONSTANT_000_X == 0x4000, "context register range");
+    if (P1117Sample()) {
+      uint32_t before[64];
+      const uint32_t n = std::min(num_registers, uint32_t(64));
+      std::memcpy(before, register_file_->values + start_index, n * sizeof(uint32_t));
+      CommandProcessor::WriteRegistersFromMem(start_index, base, num_registers);
+      uint32_t slow[64];
+      std::memcpy(slow, register_file_->values + start_index, n * sizeof(uint32_t));
+      std::memcpy(register_file_->values + start_index, before, n * sizeof(uint32_t));
+      memory::copy_and_swap(register_file_->values + start_index, base, num_registers);
+      P1117VerifyNote(0, std::memcmp(slow, register_file_->values + start_index,
+                                     n * sizeof(uint32_t)) != 0);
+      return;
+    }
+    memory::copy_and_swap(register_file_->values + start_index, base, num_registers);
     return;
   }
 
@@ -2310,6 +2582,7 @@ void D3D12CommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbu
   Fable2GpuFrameTick();
   vertex_buffers_in_sync_[0] = 0;
   vertex_buffers_in_sync_[1] = 0;
+  ++g_p1117_fetch_gen;  // [PERF-1117] sampler parameters also depend on settings
 
   // Round 9 (2026-09-16, diagnostic-only): report + clear last frame's
   // draw-dedup signatures before this frame accumulates new ones. See
@@ -2962,12 +3235,11 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
   bool host_render_targets_used;
   {
     SCOPE_profile_cpu_f("DrawPipelineConfigure");
+    // [PERF-1117]: translation lookup cache.
     D3D12Shader::D3D12Translation* vertex_shader_translation =
-        static_cast<D3D12Shader::D3D12Translation*>(
-            vertex_shader->GetOrCreateTranslation(vertex_shader_modification.value));
+        P1117GetTranslation(*vertex_shader, vertex_shader_modification.value);
     D3D12Shader::D3D12Translation* pixel_shader_translation =
-        pixel_shader ? static_cast<D3D12Shader::D3D12Translation*>(
-                           pixel_shader->GetOrCreateTranslation(pixel_shader_modification.value))
+        pixel_shader ? P1117GetTranslation(*pixel_shader, pixel_shader_modification.value)
                      : nullptr;
     uint32_t bound_depth_and_color_render_target_bits;
     uint32_t bound_depth_and_color_render_target_formats[1 + xenos::kMaxColorRenderTargets];
@@ -3702,8 +3974,40 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
       exact_draw_dedup_last_candidate_.hash_a = exact_dedup_hash_a;
       exact_draw_dedup_last_candidate_.hash_b = exact_dedup_hash_b;
     }
+    UINT p1117_start_index = 0;  // [PERF-1117]
     if (!exact_dedup_skip) {
-      deferred_command_list_.D3DIASetIndexBuffer(&index_buffer_view);
+      // [PERF-1117]: guest DMA indices through one view of the whole shared
+      // memory; the draw's offset goes into StartIndexLocation.
+      bool p1117_whole_view = false;
+      if (P1117().ib_view && !memexport_used &&
+          primitive_processing_result.index_buffer_type ==
+              PrimitiveProcessor::ProcessedIndexBufferType::kGuestDMA) {
+        const uint32_t index_size_log2 =
+            primitive_processing_result.host_index_format == xenos::IndexFormat::kInt16 ? 1 : 2;
+        const uint32_t index_base = primitive_processing_result.guest_index_base;
+        if (!(index_base & ((uint32_t(1) << index_size_log2) - 1))) {
+          p1117_whole_view = true;
+          p1117_start_index = index_base >> index_size_log2;
+          const D3D12_GPU_VIRTUAL_ADDRESS location = shared_memory_->GetGPUAddress();
+          if (!g_p1117_ib.valid || g_p1117_ib.location != location ||
+              g_p1117_ib.size != SharedMemory::kBufferSize ||
+              g_p1117_ib.format != index_buffer_view.Format) {
+            D3D12_INDEX_BUFFER_VIEW whole_view;
+            whole_view.BufferLocation = location;
+            whole_view.SizeInBytes = SharedMemory::kBufferSize;
+            whole_view.Format = index_buffer_view.Format;
+            deferred_command_list_.D3DIASetIndexBuffer(&whole_view);
+            g_p1117_ib.location = location;
+            g_p1117_ib.size = SharedMemory::kBufferSize;
+            g_p1117_ib.format = whole_view.Format;
+            g_p1117_ib.valid = true;
+          }
+        }
+      }
+      if (!p1117_whole_view) {
+        deferred_command_list_.D3DIASetIndexBuffer(&index_buffer_view);
+        g_p1117_ib.valid = false;
+      }
       if (memexport_used) {
         shared_memory_->UseForWriting();
       } else {
@@ -3715,7 +4019,7 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
       PROFILE_DRAW_CALL();
       PROFILE_VERTICES(primitive_processing_result.host_draw_vertex_count);
       deferred_command_list_.D3DDrawIndexedInstanced(
-          primitive_processing_result.host_draw_vertex_count, 1, 0, 0, 0);
+          primitive_processing_result.host_draw_vertex_count, 1, p1117_start_index, 0, 0);
     }
     if (scratch_index_buffer != nullptr) {
       ReleaseScratchGPUBuffer(scratch_index_buffer, D3D12_RESOURCE_STATE_INDEX_BUFFER);
@@ -4572,6 +4876,7 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
 
   if (!submission_open_) {
     submission_open_ = true;
+    g_p1117_ib.valid = false;  // [PERF-1117] new command list, no index buffer set
 
     // Start a new deferred command list - will submit it to the real one in the
     // end of the submission (when async pipeline creation requests are
@@ -5444,18 +5749,8 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
     if (float_constants == nullptr) {
       return false;
     }
-    for (uint32_t i = 0; i < 4; ++i) {
-      uint64_t float_constant_map_entry = float_constant_map_vertex.float_bitmap[i];
-      uint32_t float_constant_index;
-      while (rex::bit_scan_forward(float_constant_map_entry, &float_constant_index)) {
-        float_constant_map_entry &= ~(1ull << float_constant_index);
-        std::memcpy(
-            float_constants,
-            &regs[XE_GPU_REG_SHADER_CONSTANT_000_X + (i << 8) + (float_constant_index << 2)],
-            4 * sizeof(float));
-        float_constants += 4 * sizeof(float);
-      }
-    }
+    P1117CopyFloatConstants(float_constants, float_constant_map_vertex.float_bitmap,
+                            &regs[XE_GPU_REG_SHADER_CONSTANT_000_X]);  // [PERF-1117]
     cbuffer_binding_float_vertex_.up_to_date = true;
     current_graphics_root_up_to_date_ &= ~(1u << root_parameter_float_constants_vertex);
   }
@@ -5470,18 +5765,8 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
     if (pixel_shader != nullptr) {
       const Shader::ConstantRegisterMap& float_constant_map_pixel =
           pixel_shader->constant_register_map();
-      for (uint32_t i = 0; i < 4; ++i) {
-        uint64_t float_constant_map_entry = float_constant_map_pixel.float_bitmap[i];
-        uint32_t float_constant_index;
-        while (rex::bit_scan_forward(float_constant_map_entry, &float_constant_index)) {
-          float_constant_map_entry &= ~(1ull << float_constant_index);
-          std::memcpy(
-              float_constants,
-              &regs[XE_GPU_REG_SHADER_CONSTANT_256_X + (i << 8) + (float_constant_index << 2)],
-              4 * sizeof(float));
-          float_constants += 4 * sizeof(float);
-        }
-      }
+      P1117CopyFloatConstants(float_constants, float_constant_map_pixel.float_bitmap,
+                              &regs[XE_GPU_REG_SHADER_CONSTANT_256_X]);  // [PERF-1117]
     }
     cbuffer_binding_float_pixel_.up_to_date = true;
     current_graphics_root_up_to_date_ &= ~(1u << root_parameter_float_constants_pixel);
@@ -5538,9 +5823,26 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
       cbuffer_binding_descriptor_indices_vertex_.up_to_date = false;
       bindful_samplers_written_vertex_ = false;
     }
+    // [PERF-1117]: sampler cache.
+    P1117SamplerCache& sc = g_p1117_sampler_cache[0];
+    const bool sampler_cache_hit = P1117().sampler_cache && sc.valid &&
+                                   sc.layout_uid == sampler_layout_uid_vertex &&
+                                   sc.fetch_gen == g_p1117_fetch_gen &&
+                                   current_samplers_vertex_.size() >= sampler_count_vertex;
+    sc.valid = true;
+    sc.layout_uid = sampler_layout_uid_vertex;
+    sc.fetch_gen = g_p1117_fetch_gen;
     current_samplers_vertex_.resize(
         std::max(current_samplers_vertex_.size(), sampler_count_vertex));
-    for (size_t i = 0; i < sampler_count_vertex; ++i) {
+    if (sampler_cache_hit && P1117Sample()) {
+      bool bad = false;
+      for (size_t i = 0; i < sampler_count_vertex; ++i) {
+        bad |= texture_cache_->GetSamplerParameters(samplers_vertex[i]) !=
+               current_samplers_vertex_[i];
+      }
+      P1117VerifyNote(3, bad);
+    }
+    for (size_t i = 0; i < (sampler_cache_hit ? size_t(0) : sampler_count_vertex); ++i) {
       D3D12TextureCache::SamplerParameters parameters =
           texture_cache_->GetSamplerParameters(samplers_vertex[i]);
       if (current_samplers_vertex_[i] != parameters) {
@@ -5570,9 +5872,27 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
         cbuffer_binding_descriptor_indices_pixel_.up_to_date = false;
         bindful_samplers_written_pixel_ = false;
       }
+      // [PERF-1117]: sampler cache.
+      P1117SamplerCache& sc = g_p1117_sampler_cache[1];
+      const bool sampler_cache_hit = P1117().sampler_cache && sc.valid &&
+                                     sc.layout_uid == sampler_layout_uid_pixel &&
+                                     sc.fetch_gen == g_p1117_fetch_gen &&
+                                     current_samplers_pixel_.size() >= sampler_count_pixel;
+      sc.valid = true;
+      sc.layout_uid = sampler_layout_uid_pixel;
+      sc.fetch_gen = g_p1117_fetch_gen;
       current_samplers_pixel_.resize(
           std::max(current_samplers_pixel_.size(), size_t(sampler_count_pixel)));
-      for (uint32_t i = 0; i < sampler_count_pixel; ++i) {
+      if (sampler_cache_hit && P1117Sample()) {
+        bool bad = false;
+        for (size_t i = 0; i < sampler_count_pixel; ++i) {
+          bad |= texture_cache_->GetSamplerParameters((*samplers_pixel)[i]) !=
+                 current_samplers_pixel_[i];
+        }
+        P1117VerifyNote(3, bad);
+      }
+      for (uint32_t i = 0; i < (sampler_cache_hit ? uint32_t(0) : uint32_t(sampler_count_pixel));
+           ++i) {
         D3D12TextureCache::SamplerParameters parameters =
             texture_cache_->GetSamplerParameters((*samplers_pixel)[i]);
         if (current_samplers_pixel_[i] != parameters) {
